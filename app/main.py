@@ -39,7 +39,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="EspetariaOS API",
-    version="0.6.1",
+    version="0.7.2",
     description="MVP para catálogo, pedidos, caixa e administração.",
     docs_url="/docs" if settings.development else None,
     redoc_url="/redoc" if settings.development else None,
@@ -110,6 +110,10 @@ class ProductInput(BaseModel):
     priceCents: int = Field(ge=0)
     active: bool = True
     available: bool = True
+    stockControlled: bool = False
+    stockQuantity: int = Field(default=0, ge=0)
+    minimumStock: int = Field(default=0, ge=0)
+    costCents: int = Field(default=0, ge=0)
 
 
 def bearer_token(authorization: str | None = Header(default=None)) -> str:
@@ -176,7 +180,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({
             "event": "CONNECTED",
-            "payload": {"service": "EspetariaOS", "version": "0.6.1"},
+            "payload": {"service": "EspetariaOS", "version": "0.7.2"},
         })
         while True:
             await websocket.receive_text()
@@ -188,7 +192,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "service": "EspetariaOS", "version": "0.6.1"}
+    return {"ok": True, "service": "EspetariaOS", "version": "0.7.2"}
 
 
 @app.get("/api/products")
@@ -340,6 +344,8 @@ async def update_status(
             )
 
         database.update_order_status(order_id, requested_status)
+        if requested_status == "CANCELLED":
+            database.restore_order_stock(order_id, session.user_id, session.name)
         database.add_audit_log(
             "ORDER_STATUS_CHANGED",
             f"Pedido {order_id}: {requested_status}",
@@ -589,12 +595,26 @@ def admin_audit(
     )
     return {"items": items, "count": len(items)}
 
+@app.get("/api/admin/stock")
+def admin_stock(_: Session = Depends(admin_session)) -> dict[str, Any]:
+    return {"summary": database.stock_summary(), "products": database.list_products(), "movements": database.list_stock_movements()}
+
+@app.post("/api/admin/stock/movements", status_code=201)
+async def admin_stock_movement(data: StockMovementInput, session: Session = Depends(admin_session)) -> dict[str, Any]:
+    try:
+        result=database.adjust_stock(data.productId,data.quantity,data.movementType,data.reason,session.user_id,session.name)
+        database.add_audit_log("STOCK_MOVEMENT",f"Produto {result['productName']}; quantidade {data.quantity}; saldo {result['balance']}",session.user_id,session.name)
+        await realtime.broadcast("STOCK_UPDATED",result)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
 @app.get("/api/admin/system/status")
 def admin_system_status(
     _: Session = Depends(admin_session),
 ) -> dict[str, Any]:
     return {
-        "system": system_info(settings.database_path, "0.6.1"),
+        "system": system_info(settings.database_path, "0.7.2"),
         "database": database.statistics(),
         "cash": database.current_cash(),
         "services": {

@@ -7,6 +7,7 @@ const dialog = document.getElementById('productDialog');
 const sectionMap = {
   dashboard:'dashboardSection',
   products:'productsSection',
+  stock:'stockSection',
   sales:'salesSection',
   customers:'customersSection',
   audit:'auditSection',
@@ -126,6 +127,7 @@ function renderProducts(){
           <td><strong>${product.name}</strong><br><small>${product.description || ''}</small></td>
           <td>${product.category}</td>
           <td>${money(product.price_cents)}</td>
+          <td>${product.stock_controlled?product.stock_quantity:'—'}</td>
           <td><span class="availability ${product.active?'on':'off'}">${product.active?'Ativo':'Inativo'}</span></td>
           <td><span class="availability ${product.available?'on':'off'}">${product.available?'Disponível':'Indisponível'}</span></td>
           <td>
@@ -138,6 +140,44 @@ function renderProducts(){
       `).join('');
 }
 
+function toggleProductStockFields(){
+  const controlled=document.getElementById('productStockControlled')?.checked;
+  document.getElementById('productStockFields')?.classList.toggle('hidden',!controlled);
+}
+function clearProductStockErrors(){
+  ['productStockQuantity','productMinimumStock'].forEach(id=>{
+    document.getElementById(id)?.classList.remove('invalid-field');
+    const error=document.getElementById(`${id}Error`);
+    if(error)error.textContent='';
+  });
+}
+function validateProductStock(){
+  clearProductStockErrors();
+  if(!document.getElementById('productStockControlled')?.checked)return true;
+  const qf=document.getElementById('productStockQuantity');
+  const mf=document.getElementById('productMinimumStock');
+  const qtxt=qf.value.trim(), mtxt=mf.value.trim();
+  const q=Number(qtxt), m=Number(mtxt);
+  const errors=[];
+  if(qtxt===''||!Number.isInteger(q)||q<0)errors.push([qf,document.getElementById('productStockQuantityError'),'Informe a quantidade disponível para venda.']);
+  if(mtxt===''||!Number.isInteger(m)||m<0)errors.push([mf,document.getElementById('productMinimumStockError'),'Informe a quantidade mínima do produto.']);
+  errors.forEach(([field,error,message])=>{field.classList.add('invalid-field');if(error)error.textContent=message;});
+  if(errors.length){
+    errors[0][0].focus();
+    document.getElementById('productMessage').textContent='Preencha os campos obrigatórios do estoque.';
+    return false;
+  }
+  return true;
+}
+document.getElementById('productStockControlled')?.addEventListener('change',toggleProductStockFields);
+['productStockQuantity','productMinimumStock'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('input',()=>{
+    document.getElementById(id)?.classList.remove('invalid-field');
+    const error=document.getElementById(`${id}Error`);
+    if(error)error.textContent='';
+  });
+});
+
 function openForm(product=null){
   document.getElementById('productDialogTitle').textContent =
     product ? 'Editar produto' : 'Novo produto';
@@ -149,6 +189,12 @@ function openForm(product=null){
     product ? (product.price_cents / 100).toFixed(2).replace('.',',') : '';
   document.getElementById('productActive').checked = product?.active ?? true;
   document.getElementById('productAvailable').checked = product?.available ?? true;
+  document.getElementById('productCost').value=product?(product.cost_cents/100).toFixed(2).replace('.',','):'';
+  document.getElementById('productStockControlled').checked=product?.stock_controlled??false;
+  document.getElementById('productStockQuantity').value=product?.stock_quantity??0;
+  document.getElementById('productMinimumStock').value=product?.minimum_stock??0;
+  clearProductStockErrors();
+  toggleProductStockFields();
   document.getElementById('productMessage').textContent = '';
   dialog.showModal();
 }
@@ -186,7 +232,11 @@ document.getElementById('saveProduct')?.addEventListener('click',async()=>{
     description:document.getElementById('productDescription').value,
     priceCents:Math.round(Number(rawPrice)*100),
     active:document.getElementById('productActive').checked,
-    available:document.getElementById('productAvailable').checked
+    available:document.getElementById('productAvailable').checked,
+    costCents:Math.round(Number(document.getElementById('productCost').value.replace(/\./g,'').replace(',','.')||0)*100),
+    stockControlled:document.getElementById('productStockControlled').checked,
+    stockQuantity:Number(document.getElementById('productStockQuantity').value||0),
+    minimumStock:Number(document.getElementById('productMinimumStock').value||0)
   };
 
   const message = document.getElementById('productMessage');
@@ -323,3 +373,9 @@ async function loadCustomers(){try{const q=document.getElementById('customerSear
 function auditParams(){const p=new URLSearchParams(),v={action:document.getElementById('auditAction')?.value,user_name:document.getElementById('auditUser')?.value.trim(),start_date:document.getElementById('auditStartDate')?.value,end_date:document.getElementById('auditEndDate')?.value};Object.entries(v).forEach(([k,x])=>{if(x)p.set(k,x)});return p}
 async function loadAudit(){try{const d=await api(`/api/admin/audit?${auditParams()}`);document.getElementById('auditCount').textContent=`${d.count} ${d.count===1?'evento':'eventos'}`;document.getElementById('auditResults').innerHTML=d.items.length?d.items.map(i=>`<article class="audit-row"><time>${new Date(i.created_at).toLocaleString('pt-BR')}</time><strong>${auditActionLabel(i.action)}</strong><span>${i.user_name||'Sistema'}</span><p>${i.details||''}</p></article>`).join(''):'<p>Nenhum evento encontrado.</p>'}catch(e){document.getElementById('auditResults').innerHTML=`<p class="message">${e.message}</p>`}}
 document.getElementById('searchCustomers')?.addEventListener('click',loadCustomers);document.getElementById('customerSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter')loadCustomers()});document.getElementById('searchAudit')?.addEventListener('click',loadAudit);loadCustomers();loadAudit();
+
+let stockData={summary:{},products:[],movements:[]};const stockDialog=document.getElementById('stockDialog');
+function stockSituation(p){if(!p.stock_controlled)return ['Sem controle','off'];if(p.stock_quantity<=0)return ['Sem estoque','off'];if(p.stock_quantity<=p.minimum_stock)return ['Estoque baixo','warning'];return ['Normal','on']}
+async function loadStock(){try{stockData=await api('/api/admin/stock');const x=stockData.summary||{};document.getElementById('stockControlledCount').textContent=x.controlledProducts||0;document.getElementById('stockUnitsCount').textContent=x.totalUnits||0;document.getElementById('stockLowCount').textContent=x.lowStockProducts||0;document.getElementById('stockOutCount').textContent=x.outOfStockProducts||0;document.getElementById('stockValue').textContent=money(x.stockValueCents||0);const ps=(stockData.products||[]).filter(p=>p.stock_controlled);document.getElementById('stockProductRows').innerHTML=ps.length?ps.map(p=>{const [l,c]=stockSituation(p);return `<tr><td><strong>${p.name}</strong><br><small>${p.category}</small></td><td>${p.stock_quantity}</td><td>${p.minimum_stock}</td><td><span class="availability ${c}">${l}</span></td><td><button class="small" onclick="openStockMovement(${p.id})">Movimentar</button></td></tr>`}).join(''):'<tr><td colspan="5">Nenhum produto controlado.</td></tr>';document.getElementById('stockMovementRows').innerHTML=(stockData.movements||[]).length?stockData.movements.map(i=>`<article class="stock-movement-row"><div><strong>${i.product_name}</strong><small>${new Date(i.created_at).toLocaleString('pt-BR')}</small></div><span class="stock-type ${i.movement_type}">${stockMovementLabel(i.movement_type)}</span><strong class="${i.quantity>=0?'stock-positive':'stock-negative'}">${i.quantity>=0?'+':''}${i.quantity}</strong><span>Saldo: ${i.balance_after}</span><p>${i.reason||''}</p></article>`).join(''):'<p>Nenhuma movimentação.</p>'}catch(e){document.getElementById('stockMovementRows').innerHTML=`<p class="message">${e.message}</p>`}}
+function openStockMovement(id){const p=(stockData.products||[]).find(x=>x.id===id);if(!p)return;document.getElementById('stockProductId').value=id;document.getElementById('stockProductName').textContent=`${p.name} — saldo: ${p.stock_quantity}`;document.getElementById('stockMovementType').value='ENTRY';document.getElementById('stockMovementQuantity').value='';document.getElementById('stockMovementReason').value='';stockDialog.showModal()}
+document.getElementById('saveStockMovement')?.addEventListener('click',async()=>{const t=document.getElementById('stockMovementType').value;let q=Number(document.getElementById('stockMovementQuantity').value||0);if(t==='LOSS')q=-Math.abs(q);try{await api('/api/admin/stock/movements',{method:'POST',body:JSON.stringify({productId:Number(document.getElementById('stockProductId').value),quantity:q,movementType:t,reason:document.getElementById('stockMovementReason').value})});stockDialog.close();await Promise.all([loadStock(),loadProducts()]);notify('Estoque atualizado','Movimentação registrada.','success')}catch(e){document.getElementById('stockMovementMessage').textContent=e.message}});document.getElementById('refreshStock')?.addEventListener('click',loadStock);loadStock();connectRealtime(event=>{if(event==='STOCK_UPDATED'||event==='ORDER_CREATED'){loadStock();loadProducts()}});

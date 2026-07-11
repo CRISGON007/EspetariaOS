@@ -20,16 +20,9 @@ echo "2/3 - Executando teste do banco..."
 .venv/bin/python tests/test_database.py
 
 echo "3/3 - Verificando importação da aplicação..."
-ESPETARIA_ENV=development \
-ESPETARIA_DEMO=true \
-ESPETARIA_DB=data/teste_importacao.db \
-.venv/bin/python -c \
-"from app.main import app; print('Aplicação importada:', app.title)"
+ESPETARIA_ENV=development ESPETARIA_DEMO=true ESPETARIA_DB=data/teste_importacao.db .venv/bin/python -c "from app.main import app; print('Aplicação importada:', app.title)"
 
-rm -f \
-  data/teste_importacao.db \
-  data/teste_importacao.db-shm \
-  data/teste_importacao.db-wal
+rm -f   data/teste_importacao.db   data/teste_importacao.db-shm   data/teste_importacao.db-wal
 
 echo
 echo "Todos os testes automatizados foram concluídos com sucesso."

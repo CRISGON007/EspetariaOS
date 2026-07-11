@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="${1:-v0.6.1}"
+VERSION="${1:-v0.7.2}"
 COMMIT_MESSAGE="${2:-release: publica EspetariaOS ${VERSION}}"
 RELEASE_BRANCH="release/${VERSION}"
 

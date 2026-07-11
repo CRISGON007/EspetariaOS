@@ -148,6 +148,25 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_order_status_history_order
                     ON order_status_history(order_id, entered_at);
 
+                CREATE TABLE IF NOT EXISTS stock_movements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER NOT NULL,
+                    order_id INTEGER,
+                    movement_type TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    balance_after INTEGER NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    user_id INTEGER,
+                    user_name TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(product_id) REFERENCES products(id),
+                    FOREIGN KEY(order_id) REFERENCES orders(id),
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_stock_movements_product
+                    ON stock_movements(product_id, created_at);
+
                 CREATE TABLE IF NOT EXISTS cash_registers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     opened_by INTEGER NOT NULL,
@@ -178,6 +197,18 @@ class Database:
 
     def ensure_extensions(self) -> None:
         with self.connection() as conn:
+            product_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(products)").fetchall()
+            }
+            for name, definition in {
+                "stock_controlled": "INTEGER NOT NULL DEFAULT 0",
+                "stock_quantity": "INTEGER NOT NULL DEFAULT 0",
+                "minimum_stock": "INTEGER NOT NULL DEFAULT 0",
+                "cost_cents": "INTEGER NOT NULL DEFAULT 0",
+            }.items():
+                if name not in product_columns:
+                    conn.execute(f"ALTER TABLE products ADD COLUMN {name} {definition}")
+
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -397,7 +428,8 @@ class Database:
             rows = conn.execute(
                 f"""
                 SELECT id, name, description, category, price_cents,
-                       active, available, created_at, updated_at
+                       active, available, stock_controlled, stock_quantity,
+                       minimum_stock, cost_cents, created_at, updated_at
                 FROM products {where}
                 ORDER BY category, name
                 """
@@ -407,6 +439,11 @@ class Database:
                 **dict(row),
                 "active": bool(row["active"]),
                 "available": bool(row["available"]),
+                "stock_controlled": bool(row["stock_controlled"]),
+                "stock_quantity": int(row["stock_quantity"] or 0),
+                "minimum_stock": int(row["minimum_stock"] or 0),
+                "cost_cents": int(row["cost_cents"] or 0),
+                "low_stock": bool(row["stock_controlled"] and row["stock_quantity"] <= row["minimum_stock"]),
             }
             for row in rows
         ]
@@ -469,13 +506,19 @@ class Database:
 
                 product = conn.execute(
                     """
-                    SELECT id, name, price_cents FROM products
+                    SELECT id, name, price_cents, stock_controlled, stock_quantity
+                    FROM products
                     WHERE id = ? AND active = 1 AND available = 1
                     """,
                     (product_id,),
                 ).fetchone()
                 if product is None:
                     raise ValueError(f"Produto {product_id} indisponível.")
+                if product["stock_controlled"] and product["stock_quantity"] < quantity:
+                    raise ValueError(
+                        f"Estoque insuficiente para {product['name']}. "
+                        f"Disponível: {product['stock_quantity']}."
+                    )
 
                 subtotal = product["price_cents"] * quantity
                 total += subtotal
@@ -537,6 +580,22 @@ class Database:
                     for item in validated
                 ],
             )
+
+            for item in validated:
+                current = conn.execute(
+                    "SELECT stock_controlled, stock_quantity FROM products WHERE id = ?",
+                    (item["productId"],),
+                ).fetchone()
+                if current and current["stock_controlled"]:
+                    balance = int(current["stock_quantity"]) - item["quantity"]
+                    conn.execute(
+                        "UPDATE products SET stock_quantity=?, available=CASE WHEN ?<=0 THEN 0 ELSE available END, updated_at=? WHERE id=?",
+                        (balance, balance, now, item["productId"]),
+                    )
+                    conn.execute(
+                        "INSERT INTO stock_movements(product_id, order_id, movement_type, quantity, balance_after, reason, created_at) VALUES (?, ?, 'SALE', ?, ?, ?, ?)",
+                        (item["productId"], order_id, -item["quantity"], balance, f"Venda no pedido {code}", now),
+                    )
 
         return self.get_order(int(order_id))  # type: ignore[arg-type]
 
@@ -709,6 +768,57 @@ class Database:
                 (order_id, status, now),
             )
 
+    def stock_summary(self) -> dict[str, Any]:
+        with self.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) controlled, COALESCE(SUM(stock_quantity),0) units,
+                       COALESCE(SUM(CASE WHEN stock_quantity<=minimum_stock THEN 1 ELSE 0 END),0) low_stock,
+                       COALESCE(SUM(CASE WHEN stock_quantity<=0 THEN 1 ELSE 0 END),0) out_of_stock,
+                       COALESCE(SUM(stock_quantity*cost_cents),0) value_cents
+                FROM products WHERE active=1 AND stock_controlled=1
+                """
+            ).fetchone()
+        return {"controlledProducts":int(row["controlled"] or 0),"totalUnits":int(row["units"] or 0),"lowStockProducts":int(row["low_stock"] or 0),"outOfStockProducts":int(row["out_of_stock"] or 0),"stockValueCents":int(row["value_cents"] or 0)}
+
+    def list_stock_movements(self, product_id: int | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        where = "WHERE sm.product_id=?" if product_id else ""
+        values: list[Any] = [product_id] if product_id else []
+        values.append(max(1,min(limit,1000)))
+        with self.connection() as conn:
+            rows=conn.execute(f"""SELECT sm.*, p.name product_name FROM stock_movements sm JOIN products p ON p.id=sm.product_id {where} ORDER BY sm.id DESC LIMIT ?""",values).fetchall()
+        return [dict(row) for row in rows]
+
+    def adjust_stock(self, product_id:int, quantity:int, movement_type:str, reason:str, user_id:int|None=None, user_name:str="") -> dict[str,Any]:
+        movement_type=movement_type.upper()
+        if movement_type not in {"ENTRY","LOSS","ADJUSTMENT"}: raise ValueError("Tipo de movimentação inválido.")
+        if quantity==0: raise ValueError("Informe uma quantidade diferente de zero.")
+        if movement_type=="ENTRY" and quantity<0: raise ValueError("Entrada deve ser positiva.")
+        if movement_type=="LOSS": quantity=-abs(quantity)
+        now=utc_now()
+        with self.connection() as conn:
+            product=conn.execute("SELECT id,name,stock_controlled,stock_quantity FROM products WHERE id=?",(product_id,)).fetchone()
+            if product is None: raise ValueError("Produto não encontrado.")
+            if not product["stock_controlled"]: raise ValueError("Controle de estoque desativado para este produto.")
+            balance=int(product["stock_quantity"])+quantity
+            if balance<0: raise ValueError(f"Estoque não pode ficar negativo. Saldo atual: {product['stock_quantity']}.")
+            conn.execute("UPDATE products SET stock_quantity=?, available=CASE WHEN ?>0 THEN 1 ELSE 0 END, updated_at=? WHERE id=?",(balance,balance,now,product_id))
+            conn.execute("INSERT INTO stock_movements(product_id,movement_type,quantity,balance_after,reason,user_id,user_name,created_at) VALUES (?,?,?,?,?,?,?,?)",(product_id,movement_type,quantity,balance,reason.strip(),user_id,user_name,now))
+        return {"productId":product_id,"productName":product["name"],"balance":balance}
+
+    def restore_order_stock(self, order_id:int, user_id:int|None=None, user_name:str="") -> None:
+        now=utc_now()
+        with self.connection() as conn:
+            if conn.execute("SELECT 1 FROM stock_movements WHERE order_id=? AND movement_type='CANCELLATION_RETURN'",(order_id,)).fetchone(): return
+            order=conn.execute("SELECT code FROM orders WHERE id=?",(order_id,)).fetchone()
+            if order is None: raise ValueError("Pedido não encontrado.")
+            items=conn.execute("SELECT oi.product_id,oi.quantity,p.stock_controlled,p.stock_quantity FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?",(order_id,)).fetchall()
+            for item in items:
+                if not item["stock_controlled"]: continue
+                balance=int(item["stock_quantity"])+int(item["quantity"])
+                conn.execute("UPDATE products SET stock_quantity=?,available=1,updated_at=? WHERE id=?",(balance,now,item["product_id"]))
+                conn.execute("INSERT INTO stock_movements(product_id,order_id,movement_type,quantity,balance_after,reason,user_id,user_name,created_at) VALUES (?,?,'CANCELLATION_RETURN',?,?,?,?,?,?)",(item["product_id"],order_id,item["quantity"],balance,f"Devolução do pedido {order['code']}",user_id,user_name,now))
+
     def create_product(self, data: dict[str, Any]) -> int:
         name = str(data.get("name", "")).strip()
         price = int(data.get("priceCents", -1))
@@ -720,8 +830,9 @@ class Database:
                 """
                 INSERT INTO products
                 (name, description, category, price_cents, active, available,
+                 stock_controlled, stock_quantity, minimum_stock, cost_cents,
                  created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -730,6 +841,10 @@ class Database:
                     price,
                     int(bool(data.get("active", True))),
                     int(bool(data.get("available", True))),
+                    int(bool(data.get("stockControlled", False))),
+                    max(0,int(data.get("stockQuantity",0))),
+                    max(0,int(data.get("minimumStock",0))),
+                    max(0,int(data.get("costCents",0))),
                     now,
                     now,
                 ),
@@ -755,6 +870,10 @@ class Database:
                     price,
                     int(bool(data.get("active", True))),
                     int(bool(data.get("available", True))),
+                    int(bool(data.get("stockControlled", False))),
+                    max(0,int(data.get("stockQuantity",0))),
+                    max(0,int(data.get("minimumStock",0))),
+                    max(0,int(data.get("costCents",0))),
                     utc_now(),
                     product_id,
                 ),

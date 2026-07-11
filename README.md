@@ -329,7 +329,7 @@ numéricos e valida o DDD. No banco de dados, o telefone continua armazenado
 sem formatação, por exemplo `11987654321`.
 
 
-## Indicadores de tempo — v0.6.1
+## Indicadores de tempo — v0.7.2
 
 Em **Consultas > Vendas**, o status **Entregue** mostra também o tempo total do
 pedido, calculado pela soma de todas as etapas.
@@ -343,12 +343,35 @@ Classificação visual:
 O painel administrativo também mostra tempo médio de preparo, tempo médio
 total, pedido mais rápido e pedido mais demorado.
 
-## Gestão administrativa — v0.6.1
+## Gestão administrativa — v0.7.2
 Consulta de clientes, auditoria filtrável e backup automático diário.
 
-## Backup automático e retenção — v0.6.1
+## Backup automático e retenção — v0.7.2
 Na inicialização, o sistema cria o backup do dia quando necessário e mantém apenas os 30 mais recentes.
 
 ```bash
 ESPETARIA_BACKUP_RETENTION=30
 ```
+
+## Estoque — v0.7.2
+Controle opcional, baixa automática, devolução no cancelamento e histórico de movimentações.
+
+## Cadastro de estoque — v0.7.2
+Ao ativar **Controlar estoque deste produto**, o administrador informa a
+quantidade disponível para venda e a quantidade mínima. Ao atingir o mínimo,
+o painel sinaliza estoque baixo; ao zerar, o item fica indisponível.
+
+
+## Estabilização — v0.7.2
+
+Esta versão corrige o teste de retenção de backups sem remover os testes de
+produtos, estoque, telefone, pedidos, clientes, status e rastreamento.
+
+Execute:
+
+```bash
+./install.sh && ./testar.sh && ./dev.sh
+```
+
+O servidor somente será iniciado quando todos os testes anteriores forem
+concluídos com sucesso.

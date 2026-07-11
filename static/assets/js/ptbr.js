@@ -39,6 +39,7 @@ const PT_BR = Object.freeze({
     AUTOMATIC_BACKUP_CREATED: 'Backup automático criado',
     AUTOMATIC_BACKUP_FAILED: 'Falha no backup automático',
     OLD_BACKUPS_REMOVED: 'Backups antigos removidos',
+    STOCK_MOVEMENT: 'Movimentação de estoque',
     UNPAID_ORDER_DELIVERED: 'Pedido entregue sem pagamento confirmado',
     CASH_REQUIRED_FOR_DELIVERY: 'Entrega bloqueada por caixa fechado'
   }
@@ -63,3 +64,5 @@ function serviceStatusLabel(value){
 function auditActionLabel(value){
   return PT_BR.auditAction[value] || value || '';
 }
+
+function stockMovementLabel(v){return ({ENTRY:'Entrada',SALE:'Venda',LOSS:'Perda',ADJUSTMENT:'Ajuste',CANCELLATION_RETURN:'Devolução por cancelamento'})[v]||v||''}

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>EspetariaOS — Administração</title>
-  <link rel="stylesheet" href="/assets/css/app.css?v=0.6.1">
+  <link rel="stylesheet" href="/assets/css/app.css?v=0.7.2">
 </head>
 <body class="admin-body">
 <header class="topbar admin-topbar">
@@ -21,7 +21,7 @@
 <main class="admin-layout">
   <aside class="admin-sidebar">
     <button class="nav-item active" data-section="dashboard">Painel</button>
-    <button class="nav-item" data-section="products">Produtos</button><button class="nav-item" data-section="sales">Vendas</button>
+    <button class="nav-item" data-section="products">Produtos</button><button class="nav-item" data-section="stock">Estoque</button><button class="nav-item" data-section="sales">Vendas</button>
     <button class="nav-item" data-section="customers">Clientes</button><button class="nav-item" data-section="audit">Auditoria</button>
     <button class="nav-item" data-section="settings">Configurações</button>
   </aside>
@@ -110,7 +110,9 @@
       </section>
     </div>
 
-    <div id="salesSection" class="admin-section hidden"><div class="page-heading"><div><span class="eyebrow">Consultas</span><h1>Vendas</h1></div><button id="exportSales" class="primary">Exportar CSV</button></div><section class="panel"><div class="sales-filters"><input id="saleCode" placeholder="Código"><input id="saleCustomer" placeholder="Cliente"><input id="salePhone" placeholder="Telefone"><select id="saleStatus"><option value="">Todos os status</option><option value="RECEIVED">Recebido</option><option value="PREPARING">Em preparo</option><option value="READY">Pronto</option><option value="DELIVERED">Entregue</option><option value="CANCELLED">Cancelado</option></select><select id="salePaymentMethod"><option value="">Todas as formas</option><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option></select><select id="salePaymentStatus"><option value="">Todos os pagamentos</option><option value="PENDING">Pendente</option><option value="PAID">Pago</option></select><input id="saleStartDate" type="date"><input id="saleEndDate" type="date"><button id="searchSales" class="primary">Pesquisar</button></div></section><section class="panel"><div class="panel-header"><h2>Resultados</h2><span id="salesCount">0 vendas</span></div><div id="salesResults" class="dashboard-order-list"></div></section></div><div id="customersSection" class="admin-section hidden">
+    <div id="salesSection" class="admin-section hidden"><div class="page-heading"><div><span class="eyebrow">Consultas</span><h1>Vendas</h1></div><button id="exportSales" class="primary">Exportar CSV</button></div><section class="panel"><div class="sales-filters"><input id="saleCode" placeholder="Código"><input id="saleCustomer" placeholder="Cliente"><input id="salePhone" placeholder="Telefone"><select id="saleStatus"><option value="">Todos os status</option><option value="RECEIVED">Recebido</option><option value="PREPARING">Em preparo</option><option value="READY">Pronto</option><option value="DELIVERED">Entregue</option><option value="CANCELLED">Cancelado</option></select><select id="salePaymentMethod"><option value="">Todas as formas</option><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option></select><select id="salePaymentStatus"><option value="">Todos os pagamentos</option><option value="PENDING">Pendente</option><option value="PAID">Pago</option></select><input id="saleStartDate" type="date"><input id="saleEndDate" type="date"><button id="searchSales" class="primary">Pesquisar</button></div></section><section class="panel"><div class="panel-header"><h2>Resultados</h2><span id="salesCount">0 vendas</span></div><div id="salesResults" class="dashboard-order-list"></div></section></div><div id="stockSection" class="admin-section hidden"><div class="page-heading"><div><span class="eyebrow">Controle operacional</span><h1>Estoque</h1></div><button id="refreshStock" class="primary">Atualizar</button></div><section class="dashboard-grid stock-summary-grid"><article class="dashboard-card"><span>Produtos controlados</span><strong id="stockControlledCount">0</strong></article><article class="dashboard-card"><span>Unidades</span><strong id="stockUnitsCount">0</strong></article><article class="dashboard-card"><span>Estoque baixo</span><strong id="stockLowCount">0</strong></article><article class="dashboard-card"><span>Sem estoque</span><strong id="stockOutCount">0</strong></article><article class="dashboard-card"><span>Valor estimado</span><strong id="stockValue">R$ 0,00</strong></article></section><section class="panel"><div class="panel-header"><h2>Produtos controlados</h2></div><div class="table-wrap"><table><thead><tr><th>Produto</th><th>Saldo</th><th>Mínimo</th><th>Situação</th><th>Ação</th></tr></thead><tbody id="stockProductRows"></tbody></table></div></section><section class="panel"><div class="panel-header"><h2>Movimentações recentes</h2></div><div id="stockMovementRows" class="stock-movement-list"></div></section></div>
+
+    <div id="customersSection" class="admin-section hidden">
       <div class="page-heading"><div><span class="eyebrow">Cadastros</span><h1>Clientes</h1></div></div>
       <section class="panel"><div class="toolbar"><input id="customerSearch" type="search" placeholder="Buscar por nome ou telefone..."><button id="searchCustomers" class="primary">Pesquisar</button></div></section>
       <section class="panel"><div class="panel-header"><h2>Clientes cadastrados</h2><span id="customerCount">0 clientes</span></div><div id="customerResults" class="customer-grid"></div></section>
@@ -139,6 +141,7 @@
     </div>
   </section>
 </main>
+<dialog id="stockDialog"><form method="dialog" class="dialog-card"><div class="dialog-header"><h2>Movimentar estoque</h2><button value="cancel" class="icon-button">✕</button></div><input id="stockProductId" type="hidden"><p id="stockProductName" class="message"></p><label>Tipo<select id="stockMovementType"><option value="ENTRY">Entrada</option><option value="LOSS">Perda</option><option value="ADJUSTMENT">Ajuste</option></select></label><label>Quantidade<input id="stockMovementQuantity" type="number"></label><label>Motivo<textarea id="stockMovementReason" rows="3"></textarea></label><p id="stockMovementMessage" class="message"></p><div class="dialog-actions"><button value="cancel" class="ghost">Cancelar</button><button id="saveStockMovement" type="button" class="primary">Registrar</button></div></form></dialog>
 
 <dialog id="productDialog">
   <form method="dialog" class="dialog-card">
@@ -150,7 +153,21 @@
     <label>Nome<input id="productName"></label>
     <label>Categoria<input id="productCategory" value="Espetos"></label>
     <label>Descrição<textarea id="productDescription" rows="3"></textarea></label>
-    <label>Preço (R$)<input id="productPrice" inputmode="decimal"></label>
+    <label>Preço de venda (R$)<input id="productPrice" inputmode="decimal"></label>
+    <label>Custo unitário (R$)<input id="productCost" inputmode="decimal" placeholder="0,00"></label>
+    <label class="check"><input id="productStockControlled" type="checkbox"> Controlar estoque deste produto</label>
+    <div id="productStockFields" class="stock-form-grid hidden">
+      <label>Quantidade disponível para venda <span class="required-mark">*</span>
+        <input id="productStockQuantity" type="number" min="0" step="1" value="0">
+        <small class="field-help">Quantidade atual disponível para os pedidos.</small>
+        <small id="productStockQuantityError" class="field-error"></small>
+      </label>
+      <label>Quantidade mínima <span class="required-mark">*</span>
+        <input id="productMinimumStock" type="number" min="0" step="1" value="0">
+        <small class="field-help">Ao atingir este valor, o sistema sinaliza estoque baixo.</small>
+        <small id="productMinimumStockError" class="field-error"></small>
+      </label>
+    </div>
     <label class="check"><input id="productActive" type="checkbox" checked> Produto ativo</label>
     <label class="check"><input id="productAvailable" type="checkbox" checked> Produto disponível</label>
     <button id="saveProduct" type="button" class="primary full">Salvar</button>
@@ -160,5 +177,5 @@
 
 
 
-<script src="/assets/js/common.js?v=0.6.1"></script><script src="/assets/js/ptbr.js?v=0.6.1"></script><script src="/assets/js/realtime.js?v=0.6.1"></script><script src="/assets/js/admin.js?v=0.6.1"></script></body>
+<script src="/assets/js/common.js?v=0.7.2"></script><script src="/assets/js/ptbr.js?v=0.7.2"></script><script src="/assets/js/realtime.js?v=0.7.2"></script><script src="/assets/js/admin.js?v=0.7.2"></script></body>
 </html>
