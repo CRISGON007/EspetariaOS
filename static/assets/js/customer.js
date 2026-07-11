@@ -133,7 +133,7 @@ function openTrackingForLastOrder() {
     return;
   }
 
-  $('trackPhone').value = lastCreatedOrder.phone;
+  $('trackPhone').value = formatBrazilianPhone(lastCreatedOrder.phone);
   $('trackCode').value = lastCreatedOrder.code;
 
   if ($('cartDialog').open) {
@@ -153,7 +153,7 @@ $('category').addEventListener('change', renderProducts);
 $('openCart').addEventListener('click', () => {
   renderCart();
   $('customerName').value = localStorage.getItem('customer_name') || '';
-  $('customerPhone').value = localStorage.getItem('customer_phone') || '';
+  $('customerPhone').value = formatBrazilianPhone(localStorage.getItem('customer_phone') || '');
 
   if (cart.size > 0) {
     setCheckoutMode('finish');
@@ -165,13 +165,186 @@ $('openCart').addEventListener('click', () => {
 });
 
 $('openTrack').addEventListener('click', () => {
-  $('trackPhone').value = localStorage.getItem('customer_phone') || '';
+  $('trackPhone').value = formatBrazilianPhone(localStorage.getItem('customer_phone') || '');
 
   if (lastCreatedOrder) {
     $('trackCode').value = lastCreatedOrder.code;
   }
 
   $('trackDialog').showModal();
+});
+
+const VALID_BRAZILIAN_DDDS = new Set([
+  '11','12','13','14','15','16','17','18','19',
+  '21','22','24','27','28',
+  '31','32','33','34','35','37','38',
+  '41','42','43','44','45','46','47','48','49',
+  '51','53','54','55',
+  '61','62','63','64','65','66','67','68','69',
+  '71','73','74','75','77','79',
+  '81','82','83','84','85','86','87','88','89',
+  '91','92','93','94','95','96','97','98','99'
+]);
+
+function onlyPhoneDigits(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 11);
+}
+
+function formatBrazilianPhone(value) {
+  const digits = onlyPhoneDigits(value);
+
+  if (!digits) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0,2)})${digits.slice(2)}`;
+
+  if (digits.length <= 10) {
+    return `(${digits.slice(0,2)})${digits.slice(2,6)}-${digits.slice(6)}`;
+  }
+
+  return `(${digits.slice(0,2)})${digits.slice(2,7)}-${digits.slice(7)}`;
+}
+
+function applyPhoneMask(field) {
+  if (!field) return;
+
+  const cursorWasAtEnd = field.selectionStart === field.value.length;
+  field.value = formatBrazilianPhone(field.value);
+
+  if (cursorWasAtEnd) {
+    const end = field.value.length;
+    field.setSelectionRange(end, end);
+  }
+}
+
+function isValidBrazilianPhone(value) {
+  const digits = onlyPhoneDigits(value);
+
+  if (![10, 11].includes(digits.length)) return false;
+  if (!VALID_BRAZILIAN_DDDS.has(digits.slice(0, 2))) return false;
+  if (/^(\d)\1+$/.test(digits.slice(2))) return false;
+
+  return true;
+}
+
+['customerPhone', 'trackPhone'].forEach(id => {
+  const field = $(id);
+
+  field?.addEventListener('input', () => applyPhoneMask(field));
+  field?.addEventListener('paste', () => {
+    setTimeout(() => applyPhoneMask(field), 0);
+  });
+  field?.addEventListener('blur', () => applyPhoneMask(field));
+});
+
+function clearCheckoutErrors() {
+  const fields = ['customerName', 'customerPhone', 'paymentMethod'];
+
+  fields.forEach(id => {
+    const field = $(id);
+    const error = $(`${id}Error`);
+
+    field?.classList.remove('invalid-field');
+
+    if (error) {
+      error.textContent = '';
+    }
+  });
+
+  $('cartMessage').textContent = '';
+}
+
+function setFieldError(fieldId, message) {
+  const field = $(fieldId);
+  const error = $(`${fieldId}Error`);
+
+  field?.classList.add('invalid-field');
+
+  if (error) {
+    error.textContent = message;
+  }
+}
+
+function validateCheckout() {
+  clearCheckoutErrors();
+
+  const errors = [];
+  const name = $('customerName').value.trim();
+  const phone = $('customerPhone').value.trim();
+  const normalizedPhone = onlyPhoneDigits(phone);
+  const paymentMethod = $('paymentMethod').value;
+
+  if (!name) {
+    errors.push({
+      field: 'customerName',
+      message: 'Informe o nome completo do cliente.'
+    });
+  } else if (name.length < 2) {
+    errors.push({
+      field: 'customerName',
+      message: 'O nome deve ter pelo menos 2 caracteres.'
+    });
+  }
+
+  if (!phone) {
+    errors.push({
+      field: 'customerPhone',
+      message: 'Informe o telefone com DDD.'
+    });
+  } else if (!isValidBrazilianPhone(phone)) {
+    const ddd = normalizedPhone.slice(0, 2);
+    errors.push({
+      field: 'customerPhone',
+      message: (
+        normalizedPhone.length >= 2 && !VALID_BRAZILIAN_DDDS.has(ddd)
+          ? 'Informe um DDD brasileiro válido.'
+          : 'Informe um telefone válido com DDD.'
+      )
+    });
+  }
+
+  if (!paymentMethod) {
+    errors.push({
+      field: 'paymentMethod',
+      message: 'Selecione a forma de pagamento.'
+    });
+  }
+
+  errors.forEach(error => setFieldError(error.field, error.message));
+
+  if (errors.length) {
+    const firstField = $(errors[0].field);
+    firstField?.focus();
+
+    $('cartMessage').className = 'message';
+    $('cartMessage').textContent =
+      errors.length === 1
+        ? errors[0].message
+        : 'Preencha os campos obrigatórios destacados.';
+
+    return false;
+  }
+
+  return true;
+}
+
+['customerName', 'customerPhone', 'paymentMethod'].forEach(id => {
+  $(id)?.addEventListener('input', () => {
+    $(id)?.classList.remove('invalid-field');
+
+    const error = $(`${id}Error`);
+    if (error) {
+      error.textContent = '';
+    }
+  });
+
+  $(id)?.addEventListener('change', () => {
+    $(id)?.classList.remove('invalid-field');
+
+    const error = $(`${id}Error`);
+    if (error) {
+      error.textContent = '';
+    }
+  });
 });
 
 $('finishOrder').addEventListener('click', async () => {
@@ -186,6 +359,10 @@ $('finishOrder').addEventListener('click', async () => {
 
   if (!cart.size) {
     message.textContent = 'Adicione um produto.';
+    return;
+  }
+
+  if (!validateCheckout()) {
     return;
   }
 
@@ -226,7 +403,7 @@ $('finishOrder').addEventListener('click', async () => {
     updateCart();
     renderCart();
 
-    $('trackPhone').value = phone;
+    $('trackPhone').value = formatBrazilianPhone(phone);
     $('trackCode').value = order.code;
 
     message.className = 'message success';

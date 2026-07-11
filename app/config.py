@@ -14,6 +14,9 @@ class Settings:
     backups_dir: str = os.getenv("ESPETARIA_BACKUPS", "backups")
     logs_dir: str = os.getenv("ESPETARIA_LOGS", "logs")
     demo_mode: bool = os.getenv("ESPETARIA_DEMO", "false").lower() in {"1", "true", "yes", "on"}
+    automatic_backup: bool = os.getenv("ESPETARIA_AUTO_BACKUP", "true").lower() in {"1", "true", "yes", "on"}
+    backup_check_minutes: int = int(os.getenv("ESPETARIA_BACKUP_CHECK_MINUTES", "60"))
+    backup_retention: int = int(os.getenv("ESPETARIA_BACKUP_RETENTION", "30"))
 
     @property
     def development(self) -> bool:

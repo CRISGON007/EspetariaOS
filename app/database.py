@@ -19,6 +19,34 @@ def normalize_phone(value: str) -> str:
     return re.sub(r"\D", "", value or "")
 
 
+VALID_BRAZILIAN_DDDS = {
+    "11", "12", "13", "14", "15", "16", "17", "18", "19",
+    "21", "22", "24", "27", "28",
+    "31", "32", "33", "34", "35", "37", "38",
+    "41", "42", "43", "44", "45", "46", "47", "48", "49",
+    "51", "53", "54", "55",
+    "61", "62", "63", "64", "65", "66", "67", "68", "69",
+    "71", "73", "74", "75", "77", "79",
+    "81", "82", "83", "84", "85", "86", "87", "88", "89",
+    "91", "92", "93", "94", "95", "96", "97", "98", "99",
+}
+
+
+def validate_brazilian_phone(value: str) -> str:
+    phone = normalize_phone(value)
+
+    if len(phone) not in {10, 11}:
+        raise ValueError("Informe um telefone válido com DDD.")
+
+    if phone[:2] not in VALID_BRAZILIAN_DDDS:
+        raise ValueError("Informe um DDD brasileiro válido.")
+
+    if len(set(phone[2:])) == 1:
+        raise ValueError("Informe um número de telefone válido.")
+
+    return phone
+
+
 def make_order_code() -> str:
     now = datetime.now()
     return f"ESP-{now:%Y%m%d}-{random.SystemRandom().randint(1000, 9999)}"
@@ -109,6 +137,16 @@ class Database:
                     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
                     FOREIGN KEY(product_id) REFERENCES products(id)
                 );
+                CREATE TABLE IF NOT EXISTS order_status_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    entered_at TEXT NOT NULL,
+                    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_order_status_history_order
+                    ON order_status_history(order_id, entered_at);
 
                 CREATE TABLE IF NOT EXISTS cash_registers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,6 +195,34 @@ class Database:
                 """
             )
 
+            orders = conn.execute(
+                """
+                SELECT id, status, created_at, updated_at
+                FROM orders
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM order_status_history h
+                    WHERE h.order_id = orders.id
+                )
+                """
+            ).fetchall()
+
+            for order in orders:
+                conn.execute(
+                    """
+                    INSERT INTO order_status_history(order_id, status, entered_at)
+                    VALUES (?, 'RECEIVED', ?)
+                    """,
+                    (order["id"], order["created_at"]),
+                )
+                if order["status"] != "RECEIVED":
+                    conn.execute(
+                        """
+                        INSERT INTO order_status_history(order_id, status, entered_at)
+                        VALUES (?, ?, ?)
+                        """,
+                        (order["id"], order["status"], order["updated_at"]),
+                    )
+
     def add_audit_log(
         self,
         action: str,
@@ -173,17 +239,78 @@ class Database:
                 (user_id, user_name, action, details, utc_now()),
             )
 
-    def recent_audit_logs(self, limit: int = 100) -> list[dict[str, Any]]:
+    def recent_audit_logs(
+        self,
+        limit: int = 100,
+        action: str = "",
+        user_name: str = "",
+        start_date: str = "",
+        end_date: str = "",
+    ) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 500))
+        conditions: list[str] = []
+        values: list[Any] = []
+        if action.strip():
+            conditions.append("action = ?")
+            values.append(action.strip().upper())
+        if user_name.strip():
+            conditions.append("LOWER(user_name) LIKE LOWER(?)")
+            values.append(f"%{user_name.strip()}%")
+        if start_date.strip():
+            conditions.append("date(created_at) >= date(?)")
+            values.append(start_date.strip())
+        if end_date.strip():
+            conditions.append("date(created_at) <= date(?)")
+            values.append(end_date.strip())
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        values.append(limit)
         with self.connection() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT id, user_id, user_name, action, details, created_at
-                FROM audit_logs ORDER BY id DESC LIMIT ?
+                FROM audit_logs
+                {where}
+                ORDER BY id DESC
+                LIMIT ?
                 """,
-                (limit,),
+                values,
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_customers(self, query: str = "", limit: int = 300) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(limit, 1000))
+        values: list[Any] = []
+        where = ""
+        if query.strip():
+            normalized = normalize_phone(query)
+            where = "WHERE LOWER(c.name) LIKE LOWER(?) OR c.phone LIKE ?"
+            values.extend([f"%{query.strip()}%", f"%{normalized}%"])
+        values.append(safe_limit)
+        with self.connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT c.id, c.name, c.phone, c.created_at,
+                       COUNT(o.id) AS order_count,
+                       COALESCE(SUM(CASE WHEN o.payment_status='PAID'
+                           THEN o.total_cents ELSE 0 END), 0) AS paid_total_cents,
+                       MAX(o.created_at) AS last_order_at
+                FROM customers c
+                LEFT JOIN orders o ON o.customer_id = c.id
+                {where}
+                GROUP BY c.id, c.name, c.phone, c.created_at
+                ORDER BY CASE WHEN MAX(o.created_at) IS NULL THEN 1 ELSE 0 END,
+                         MAX(o.created_at) DESC, c.name
+                LIMIT ?
+                """,
+                values,
+            ).fetchall()
+        return [{
+            "id": row["id"], "name": row["name"], "phone": row["phone"],
+            "createdAt": row["created_at"],
+            "orderCount": int(row["order_count"] or 0),
+            "paidTotalCents": int(row["paid_total_cents"] or 0),
+            "lastOrderAt": row["last_order_at"],
+        } for row in rows]
 
     def statistics(self) -> dict[str, Any]:
         with self.connection() as conn:
@@ -297,11 +424,9 @@ class Database:
 
     def upsert_customer(self, name: str, phone: str) -> dict[str, Any]:
         name = name.strip()
-        phone = normalize_phone(phone)
+        phone = validate_brazilian_phone(phone)
         if len(name) < 2:
             raise ValueError("Informe um nome válido.")
-        if not 10 <= len(phone) <= 13:
-            raise ValueError("Informe um telefone válido com DDD.")
 
         now = utc_now()
         with self.connection() as conn:
@@ -385,6 +510,13 @@ class Database:
                 ),
             )
             order_id = cursor.lastrowid
+            conn.execute(
+                """
+                INSERT INTO order_status_history(order_id, status, entered_at)
+                VALUES (?, 'RECEIVED', ?)
+                """,
+                (order_id, now),
+            )
             conn.executemany(
                 """
                 INSERT INTO order_items
@@ -407,6 +539,35 @@ class Database:
             )
 
         return self.get_order(int(order_id))  # type: ignore[arg-type]
+
+    def order_status_timeline(self, order_id: int) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT status, entered_at
+                FROM order_status_history
+                WHERE order_id = ?
+                ORDER BY entered_at, id
+                """,
+                (order_id,),
+            ).fetchall()
+
+        timeline: list[dict[str, Any]] = []
+        for index, row in enumerate(rows):
+            entered_at = datetime.fromisoformat(row["entered_at"])
+            left_at = (
+                datetime.fromisoformat(rows[index + 1]["entered_at"])
+                if index + 1 < len(rows)
+                else datetime.now(timezone.utc)
+            )
+            timeline.append({
+                "status": row["status"],
+                "enteredAt": row["entered_at"],
+                "leftAt": rows[index + 1]["entered_at"] if index + 1 < len(rows) else None,
+                "durationSeconds": max(0, int((left_at - entered_at).total_seconds())),
+                "current": index == len(rows) - 1,
+            })
+        return timeline
 
     def get_order(self, order_id: int) -> dict[str, Any] | None:
         with self.connection() as conn:
@@ -456,6 +617,7 @@ class Database:
                 }
                 for item in items
             ],
+            "statusTimeline": self.order_status_timeline(order_id),
         }
 
     def track_orders(
@@ -474,8 +636,7 @@ class Database:
         values: list[Any] = []
 
         if normalized_phone:
-            if not 10 <= len(normalized_phone) <= 13:
-                raise ValueError("Informe um telefone válido com DDD.")
+            normalized_phone = validate_brazilian_phone(normalized_phone)
             conditions.append("c.phone = ?")
             values.append(normalized_phone)
 
@@ -526,10 +687,26 @@ class Database:
         allowed = {"RECEIVED", "PREPARING", "READY", "DELIVERED", "CANCELLED"}
         if status not in allowed:
             raise ValueError("Status inválido.")
+        now = utc_now()
         with self.connection() as conn:
+            current = conn.execute(
+                "SELECT status FROM orders WHERE id = ?",
+                (order_id,),
+            ).fetchone()
+            if current is None:
+                raise ValueError("Pedido não encontrado.")
+            if current["status"] == status:
+                return
             conn.execute(
                 "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?",
-                (status, utc_now(), order_id),
+                (status, now, order_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO order_status_history(order_id, status, entered_at)
+                VALUES (?, ?, ?)
+                """,
+                (order_id, status, now),
             )
 
     def create_product(self, data: dict[str, Any]) -> int:
@@ -599,6 +776,50 @@ class Database:
                 )
             else:
                 conn.execute("DELETE FROM products WHERE id=?", (product_id,))
+
+    def list_sales(self, code: str = "", customer: str = "", phone: str = "", status: str = "", payment_method: str = "", payment_status: str = "", start_date: str = "", end_date: str = "", limit: int = 300) -> list[dict[str, Any]]:
+        conditions=[]; values=[]
+        if code.strip(): conditions.append("UPPER(o.code) LIKE UPPER(?)"); values.append(f"%{code.strip()}%")
+        if customer.strip(): conditions.append("LOWER(c.name) LIKE LOWER(?)"); values.append(f"%{customer.strip()}%")
+        if normalize_phone(phone): conditions.append("c.phone LIKE ?"); values.append(f"%{normalize_phone(phone)}%")
+        if status.strip(): conditions.append("o.status=?"); values.append(status.strip().upper())
+        if payment_method.strip(): conditions.append("o.payment_method=?"); values.append(payment_method.strip().upper())
+        if payment_status.strip(): conditions.append("o.payment_status=?"); values.append(payment_status.strip().upper())
+        if start_date.strip(): conditions.append("date(o.created_at)>=date(?)"); values.append(start_date.strip())
+        if end_date.strip(): conditions.append("date(o.created_at)<=date(?)"); values.append(end_date.strip())
+        where=f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        values.append(max(1,min(limit,1000)))
+        with self.connection() as conn:
+            rows=conn.execute(f"SELECT o.id FROM orders o JOIN customers c ON c.id=o.customer_id {where} ORDER BY o.created_at DESC LIMIT ?",values).fetchall()
+        return [o for r in rows if (o:=self.get_order(r["id"]))]
+
+    def dashboard_metrics(self) -> dict[str, Any]:
+        with self.connection() as conn:
+            row=conn.execute("SELECT COUNT(*) orders, COALESCE(SUM(CASE WHEN payment_status='PAID' THEN total_cents ELSE 0 END),0) revenue FROM orders WHERE date(created_at)=date('now','localtime')").fetchone()
+            paid=conn.execute("SELECT COUNT(*) FROM orders WHERE date(created_at)=date('now','localtime') AND payment_status='PAID'").fetchone()[0]
+            cancelled=conn.execute("SELECT COUNT(*) FROM orders WHERE date(created_at)=date('now','localtime') AND status='CANCELLED'").fetchone()[0]
+        revenue=int(row['revenue'] or 0)
+        return {"ordersToday":int(row['orders'] or 0),"revenueTodayCents":revenue,"averageTicketCents":int(revenue/paid) if paid else 0,"cancelledToday":int(cancelled)}
+
+    def cash_history(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows=conn.execute("SELECT cr.*,uo.name opened_by_name,uc.name closed_by_name FROM cash_registers cr JOIN users uo ON uo.id=cr.opened_by LEFT JOIN users uc ON uc.id=cr.closed_by ORDER BY cr.id DESC LIMIT ?",(max(1,min(limit,500)),)).fetchall()
+            result=[]
+            for row in rows:
+                t=conn.execute("SELECT COALESCE(SUM(CASE WHEN type='SALE' THEN value_cents ELSE 0 END),0) sales,COALESCE(SUM(CASE WHEN type='SUPPLY' THEN value_cents ELSE 0 END),0) supplies,COALESCE(SUM(CASE WHEN type='WITHDRAWAL' THEN value_cents ELSE 0 END),0) withdrawals FROM cash_movements WHERE cash_register_id=?",(row['id'],)).fetchone()
+                expected=int(row['opening_cents'])+int(t['sales'])+int(t['supplies'])-int(t['withdrawals']); closing=row['closing_cents']
+                result.append({"id":row['id'],"openedAt":row['opened_at'],"closedAt":row['closed_at'],"openedBy":row['opened_by_name'],"closedBy":row['closed_by_name'],"openingCents":row['opening_cents'],"closingCents":closing,"status":row['status'],"salesCents":t['sales'],"suppliesCents":t['supplies'],"withdrawalsCents":t['withdrawals'],"expectedCents":expected,"differenceCents":int(closing)-expected if closing is not None else None})
+        return result
+
+    def add_cash_movement(self, movement_type: str, value_cents: int, description: str, payment_method: str = "CASH") -> int:
+        movement_type=movement_type.upper()
+        if movement_type not in {"SUPPLY","WITHDRAWAL"}: raise ValueError("Tipo de movimentação inválido.")
+        if value_cents<=0: raise ValueError("Informe um valor maior que zero.")
+        current=self.current_cash()
+        if current is None: raise ValueError("Não existe caixa aberto.")
+        with self.connection() as conn:
+            cur=conn.execute("INSERT INTO cash_movements(cash_register_id,order_id,type,payment_method,value_cents,description,created_at) VALUES (?,NULL,?,?,?,?,?)",(current['id'],movement_type,payment_method.upper(),value_cents,description.strip(),utc_now()))
+            return int(cur.lastrowid)
 
     def current_cash(self) -> dict[str, Any] | None:
         with self.connection() as conn:

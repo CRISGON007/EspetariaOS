@@ -1,4 +1,4 @@
-# EspetariaOS Python v0.4.9
+# EspetariaOS Python v0.5.3
 
 Versão com atualização em tempo real e central de notificações, sem PWA e sem instalação nos aparelhos dos clientes.
 
@@ -29,8 +29,8 @@ Versão com atualização em tempo real e central de notificações, sem PWA e s
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip unzip
 
-unzip EspetariaOS_Python_v0.4.9.zip
-cd EspetariaOS_Python_v0.4.9
+unzip EspetariaOS_Python_v0.5.3.zip
+cd EspetariaOS_Python_v0.5.3
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -65,7 +65,7 @@ ESPETARIA_DEMO=false
 A documentação `/docs`, `/redoc` e `/openapi.json` fica desativada.
 
 
-## Correções da v0.4.9
+## Correções da v0.5.3
 
 - Removido o botão **Acesso interno** da página pública do cliente.
 - Removida a exibição das credenciais iniciais da tela de login.
@@ -102,7 +102,7 @@ O VS Code usará o interpretador:
 Observação: `0.0.0.0` é o endereço de escuta do servidor. No navegador da própria TV Box ou computador, use `http://localhost:8080/`. Em outro dispositivo da rede, use o IP real da TV Box, por exemplo `http://192.168.15.20:8080/`.
 
 
-## Padronização pt-BR da v0.4.9
+## Padronização pt-BR da v0.5.3
 
 Os valores técnicos continuam armazenados em inglês no banco e na API para preservar estabilidade, mas a interface passa a exibir rótulos em português.
 
@@ -134,14 +134,14 @@ static/assets/js/ptbr.js
 ```
 
 
-## Correção da v0.4.9
+## Correção da v0.5.3
 
 - Corrigida a tradução do status na tela pública de rastreamento.
 - Adicionado versionamento às URLs dos arquivos CSS e JavaScript para impedir que o navegador reutilize arquivos antigos em cache.
 - Após atualizar, reinicie o servidor e recarregue a página com `Ctrl+Shift+R`.
 
 
-## Fluxo simplificado da v0.4.9
+## Fluxo simplificado da v0.5.3
 
 Primeira preparação:
 
@@ -160,13 +160,13 @@ Testar:
 Depois de concluir os testes manuais:
 
 ```bash
-./finalizar_versao.sh v0.4.9
+./finalizar_versao.sh v0.5.3
 ```
 
 O script pedirá confirmações antes de criar o commit, enviar a branch, fazer o merge na `main` e criar a tag.
 
 
-## Alterações funcionais da v0.4.9
+## Alterações funcionais da v0.5.3
 
 ### Rastreamento
 
@@ -185,7 +185,7 @@ Quando um pedido está **Pronto** e o pagamento ainda está **Pendente**, o aten
 A entrega só prossegue após confirmação explícita. A ação fica registrada na auditoria.
 
 
-## Entrega condicionada ao caixa — v0.4.9
+## Entrega condicionada ao caixa — v0.5.3
 
 Ao marcar um pedido como **Entregue**, o sistema verifica primeiro se existe um caixa aberto.
 
@@ -201,7 +201,7 @@ Se o atendente cancelar, o pedido permanece como **Pronto**.
 Depois da verificação do caixa, o sistema ainda verifica se o pagamento foi confirmado. Se estiver pendente, exibe o segundo aviso antes da entrega.
 
 
-## Correção do painel administrativo — v0.4.9
+## Correção do painel administrativo — v0.5.3
 
 O painel administrativo passa a atualizar automaticamente quando ocorre:
 
@@ -222,7 +222,7 @@ Ctrl + Shift + R
 ```
 
 
-## Fluxo do cliente — v0.4.9
+## Fluxo do cliente — v0.5.3
 
 Depois que o pedido é criado:
 
@@ -250,7 +250,7 @@ uvicorn[standard]==0.50.2
 O script `install.sh` valida `websockets` e `wsproto` depois da instalação.
 
 
-## Correção crítica do painel administrativo — v0.4.9
+## Correção crítica do painel administrativo — v0.5.3
 
 O painel não atualizava porque o botão visível **Atualizar** tinha o identificador
 interno `refreshPainel`, enquanto o JavaScript procurava `refreshDashboard`.
@@ -268,5 +268,87 @@ A execução do `admin.js` era interrompida antes de:
 - conectar o WebSocket;
 - iniciar a atualização periódica.
 
-A v0.4.9 corrige o identificador e adiciona proteções para que um componente
+A v0.5.3 corrige o identificador e adiciona proteções para que um componente
 opcional ausente não interrompa todo o painel.
+
+
+## v0.5.3
+Caixa ampliado, indicadores administrativos, consulta de vendas e exportação CSV.
+
+
+## Correções da v0.5.3
+
+O Uvicorn precisa de pelo menos um backend de WebSocket. O projeto utiliza
+`websockets`, instalado por `uvicorn[standard]`. O pacote `wsproto` é uma
+alternativa e não precisa estar instalado simultaneamente.
+
+O `testar.sh` agora define automaticamente a raiz do projeto no `PYTHONPATH`,
+evitando `ModuleNotFoundError: No module named 'app'`.
+
+Depois de atualizar:
+
+```bash
+./install.sh
+./testar.sh
+./dev.sh
+```
+
+Se o navegador mostrar respostas `401 Unauthorized`, apague a sessão antiga:
+
+```javascript
+localStorage.clear()
+```
+
+ou simplesmente use o botão **Sair** e faça login novamente.
+
+
+## Validação do carrinho — v0.5.3
+
+Antes de criar o pedido, o sistema valida individualmente:
+
+- nome completo;
+- telefone com DDD;
+- forma de pagamento.
+
+Cada campo incompleto ou inválido recebe uma mensagem própria e destaque visual.
+O cursor é direcionado automaticamente ao primeiro campo que precisa ser
+corrigido. O campo de observação permanece opcional.
+
+
+## Telefone brasileiro — v0.5.3
+
+Os campos de telefone agora aplicam máscara automaticamente:
+
+```text
+Celular: (11)98765-4321
+Fixo:    (11)3234-5678
+```
+
+A interface aceita apenas os primeiros 11 dígitos, ignora caracteres não
+numéricos e valida o DDD. No banco de dados, o telefone continua armazenado
+sem formatação, por exemplo `11987654321`.
+
+
+## Indicadores de tempo — v0.6.1
+
+Em **Consultas > Vendas**, o status **Entregue** mostra também o tempo total do
+pedido, calculado pela soma de todas as etapas.
+
+Classificação visual:
+
+- até 15 minutos: verde;
+- de 15 a 25 minutos: amarelo;
+- acima de 25 minutos: vermelho.
+
+O painel administrativo também mostra tempo médio de preparo, tempo médio
+total, pedido mais rápido e pedido mais demorado.
+
+## Gestão administrativa — v0.6.1
+Consulta de clientes, auditoria filtrável e backup automático diário.
+
+## Backup automático e retenção — v0.6.1
+Na inicialização, o sistema cria o backup do dia quando necessário e mantém apenas os 30 mais recentes.
+
+```bash
+ESPETARIA_BACKUP_RETENTION=30
+```

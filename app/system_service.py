@@ -113,3 +113,31 @@ def safe_backup_path(backups_dir: str, name: str) -> Path:
     if not path.exists():
         raise FileNotFoundError("Backup não encontrado.")
     return path
+
+
+def backup_created_today(backups_dir: str) -> bool:
+    directory = Path(backups_dir)
+    if not directory.exists():
+        return False
+    today = datetime.now().date()
+    return any(
+        datetime.fromtimestamp(file.stat().st_mtime).date() == today
+        for file in directory.glob("espetaria_*.db")
+    )
+
+def create_daily_backup_if_needed(database_path: str, backups_dir: str) -> Path | None:
+    if backup_created_today(backups_dir):
+        return None
+    return create_backup(database_path, backups_dir)
+
+
+def prune_old_backups(backups_dir: str, keep: int = 30) -> list[str]:
+    directory = Path(backups_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    safe_keep = max(1, keep)
+    files = sorted(directory.glob("espetaria_*.db"), key=lambda file: file.stat().st_mtime, reverse=True)
+    removed: list[str] = []
+    for file in files[safe_keep:]:
+        file.unlink(missing_ok=True)
+        removed.append(file.name)
+    return removed

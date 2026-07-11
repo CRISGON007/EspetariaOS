@@ -10,11 +10,14 @@ if __package__ in {None, ""}:
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import asyncio
 import time
 from typing import Any
+import csv
+import io
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -24,6 +27,8 @@ from app.security import new_token, verify_password
 from app.realtime import realtime
 from app.system_service import (
     create_backup,
+    create_daily_backup_if_needed,
+    prune_old_backups,
     list_backups,
     safe_backup_path,
     system_info,
@@ -34,7 +39,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="EspetariaOS API",
-    version="0.4.9",
+    version="0.6.1",
     description="MVP para catálogo, pedidos, caixa e administração.",
     docs_url="/docs" if settings.development else None,
     redoc_url="/redoc" if settings.development else None,
@@ -93,6 +98,11 @@ class CashInput(BaseModel):
     valueCents: int = Field(ge=0)
 
 
+class CashMovementInput(BaseModel):
+    valueCents: int = Field(gt=0)
+    description: str = Field(default="", max_length=300)
+
+
 class ProductInput(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     description: str = Field(default="", max_length=500)
@@ -133,13 +143,40 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+async def run_automatic_backup_cycle() -> None:
+    if not settings.automatic_backup:
+        return
+    try:
+        backup = create_daily_backup_if_needed(settings.database_path, settings.backups_dir)
+        if backup is not None:
+            database.add_audit_log("AUTOMATIC_BACKUP_CREATED", backup.name, user_name="Sistema")
+        removed = prune_old_backups(settings.backups_dir, settings.backup_retention)
+        if removed:
+            database.add_audit_log(
+                "OLD_BACKUPS_REMOVED",
+                f"{len(removed)} backup(s) removido(s): {', '.join(removed)}",
+                user_name="Sistema",
+            )
+    except Exception as exc:
+        database.add_audit_log("AUTOMATIC_BACKUP_FAILED", str(exc), user_name="Sistema")
+
+async def automatic_backup_loop() -> None:
+    while True:
+        await run_automatic_backup_cycle()
+        await asyncio.sleep(max(5, settings.backup_check_minutes) * 60)
+
+@app.on_event("startup")
+async def start_background_tasks() -> None:
+    await run_automatic_backup_cycle()
+    asyncio.create_task(automatic_backup_loop())
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await realtime.connect(websocket)
     try:
         await websocket.send_json({
             "event": "CONNECTED",
-            "payload": {"service": "EspetariaOS", "version": "0.4.9"},
+            "payload": {"service": "EspetariaOS", "version": "0.6.1"},
         })
         while True:
             await websocket.receive_text()
@@ -151,7 +188,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "service": "EspetariaOS", "version": "0.4.9"}
+    return {"ok": True, "service": "EspetariaOS", "version": "0.6.1"}
 
 
 @app.get("/api/products")
@@ -488,12 +525,76 @@ def admin_demo_status(
     return {"enabled": settings.demo_mode}
 
 
+@app.get("/api/admin/dashboard")
+def admin_dashboard(_: Session = Depends(admin_session)) -> dict[str, Any]:
+    return {"metrics": database.dashboard_metrics(), "cash": database.current_cash()}
+
+
+@app.get("/api/admin/sales")
+def admin_sales(code: str = "", customer: str = "", phone: str = "", status: str = "", payment_method: str = "", payment_status: str = "", start_date: str = "", end_date: str = "", _: Session = Depends(admin_session)) -> dict[str, Any]:
+    items = database.list_sales(code, customer, phone, status, payment_method, payment_status, start_date, end_date)
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/admin/sales/export.csv")
+def admin_sales_export(code: str = "", customer: str = "", phone: str = "", status: str = "", payment_method: str = "", payment_status: str = "", start_date: str = "", end_date: str = "", _: Session = Depends(admin_session)) -> StreamingResponse:
+    items = database.list_sales(code, customer, phone, status, payment_method, payment_status, start_date, end_date, 1000)
+    output = io.StringIO(); writer = csv.writer(output, delimiter=";")
+    writer.writerow(["Código","Cliente","Telefone","Status","Pagamento","Forma","Total","Criado em"])
+    for order in items:
+        writer.writerow([order["code"],order["customer"]["name"],order["customer"]["phone"],order["status"],order["paymentStatus"],order["paymentMethod"],f'{order["totalCents"]/100:.2f}'.replace('.',','),order["createdAt"]])
+    output.seek(0)
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv; charset=utf-8", headers={"Content-Disposition":"attachment; filename=vendas.csv"})
+
+
+@app.get("/api/staff/cash/history")
+def staff_cash_history(_: Session = Depends(current_session)) -> dict[str, Any]:
+    return {"items": database.cash_history()}
+
+
+@app.post("/api/staff/cash/supply", status_code=201)
+def staff_cash_supply(data: CashMovementInput, session: Session = Depends(current_session)) -> dict[str, Any]:
+    try:
+        mid=database.add_cash_movement("SUPPLY",data.valueCents,data.description)
+        database.add_audit_log("CASH_SUPPLY",f"Movimentação {mid}; valor {data.valueCents}",session.user_id,session.name)
+        return {"ok":True,"cash":database.current_cash()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
+@app.post("/api/staff/cash/withdrawal", status_code=201)
+def staff_cash_withdrawal(data: CashMovementInput, session: Session = Depends(current_session)) -> dict[str, Any]:
+    try:
+        mid=database.add_cash_movement("WITHDRAWAL",data.valueCents,data.description)
+        database.add_audit_log("CASH_WITHDRAWAL",f"Movimentação {mid}; valor {data.valueCents}",session.user_id,session.name)
+        return {"ok":True,"cash":database.current_cash()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
+
+@app.get("/api/admin/customers")
+def admin_customers(query: str = "", _: Session = Depends(admin_session)) -> dict[str, Any]:
+    items = database.list_customers(query=query)
+    return {"items": items, "count": len(items)}
+
+@app.get("/api/admin/audit")
+def admin_audit(
+    action: str = "", user_name: str = "", start_date: str = "",
+    end_date: str = "", limit: int = 200,
+    _: Session = Depends(admin_session),
+) -> dict[str, Any]:
+    items = database.recent_audit_logs(
+        limit=limit, action=action, user_name=user_name,
+        start_date=start_date, end_date=end_date,
+    )
+    return {"items": items, "count": len(items)}
+
 @app.get("/api/admin/system/status")
 def admin_system_status(
     _: Session = Depends(admin_session),
 ) -> dict[str, Any]:
     return {
-        "system": system_info(settings.database_path, "0.4.9"),
+        "system": system_info(settings.database_path, "0.6.1"),
         "database": database.statistics(),
         "cash": database.current_cash(),
         "services": {

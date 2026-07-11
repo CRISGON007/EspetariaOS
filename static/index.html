@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EspetariaOS — Catálogo</title><link rel="stylesheet" href="/assets/css/app.css?v=0.4.9">
+<title>EspetariaOS — Catálogo</title><link rel="stylesheet" href="/assets/css/app.css?v=0.6.1">
 </head><body>
 <header class="topbar"><div><strong>🍢 EspetariaOS</strong><small>Catálogo e pedidos</small></div>
 <nav><button id="openTrack" class="ghost">Rastrear pedido</button></nav></header>
@@ -12,9 +12,27 @@
 <section id="products" class="product-grid"></section></main>
 <dialog id="cartDialog"><form method="dialog" class="dialog-card wide"><div class="dialog-header"><h2>Seu pedido</h2><button value="cancel" class="icon-button">✕</button></div>
 <div id="cartItems"></div><div class="summary"><span>Total</span><strong id="cartDialogTotal">R$ 0,00</strong></div>
-<label>Nome completo<input id="customerName" autocomplete="name"></label><label>Telefone com DDD<input id="customerPhone" inputmode="tel" autocomplete="tel"></label>
-<label>Observação<textarea id="orderNotes" rows="3"></textarea></label><label>Pagamento<select id="paymentMethod"><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option></select></label>
+<label for="customerName">Nome completo <span class="required-mark">*</span>
+<input id="customerName" autocomplete="name" required aria-describedby="customerNameError">
+<small id="customerNameError" class="field-error" aria-live="polite"></small>
+</label>
+<label for="customerPhone">Telefone com DDD <span class="required-mark">*</span>
+<input id="customerPhone" inputmode="numeric" autocomplete="tel" maxlength="15" placeholder="(11)98765-4321" required aria-describedby="customerPhoneError">
+<small id="customerPhoneError" class="field-error" aria-live="polite"></small>
+</label>
+<label for="orderNotes">Observação <span class="optional-mark">(opcional)</span>
+<textarea id="orderNotes" rows="3"></textarea>
+</label>
+<label for="paymentMethod">Pagamento <span class="required-mark">*</span>
+<select id="paymentMethod" required aria-describedby="paymentMethodError">
+<option value="">Selecione a forma de pagamento</option>
+<option value="PIX">PIX</option>
+<option value="CASH">Dinheiro</option>
+<option value="CARD">Cartão</option>
+</select>
+<small id="paymentMethodError" class="field-error" aria-live="polite"></small>
+</label>
 <button id="finishOrder" type="button" class="primary full" data-mode="finish">Finalizar pedido</button><p id="cartMessage" class="message"></p></form></dialog>
 <dialog id="trackDialog"><form method="dialog" class="dialog-card"><div class="dialog-header"><h2>Rastrear pedido</h2><button value="cancel" class="icon-button">✕</button></div>
-<p class="track-help">Informe o telefone <strong>ou</strong> o código do pedido. Também é possível preencher os dois campos para uma busca mais específica.</p><label>Telefone<input id="trackPhone" inputmode="tel" placeholder="(11) 99999-9999"></label><div class="track-separator"><span>ou</span></div><label>Código do pedido<input id="trackCode" placeholder="ESP-20260711-1234"></label><button id="trackOrder" type="button" class="primary full">Consultar</button><div id="trackResult"></div></form></dialog>
-<script src="/assets/js/ptbr.js?v=0.4.9"></script><script src="/assets/js/realtime.js?v=0.4.9"></script><script src="/assets/js/customer.js?v=0.4.9"></script></body></html>
+<p class="track-help">Informe o telefone <strong>ou</strong> o código do pedido. Também é possível preencher os dois campos para uma busca mais específica.</p><label>Telefone<input id="trackPhone" inputmode="numeric" maxlength="15" placeholder="(11)98765-4321"></label><div class="track-separator"><span>ou</span></div><label>Código do pedido<input id="trackCode" placeholder="ESP-20260711-1234"></label><button id="trackOrder" type="button" class="primary full">Consultar</button><div id="trackResult"></div></form></dialog>
+<script src="/assets/js/ptbr.js?v=0.6.1"></script><script src="/assets/js/realtime.js?v=0.6.1"></script><script src="/assets/js/customer.js?v=0.6.1"></script></body></html>

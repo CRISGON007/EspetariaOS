@@ -218,7 +218,7 @@ async function loadCash(){
       <div><small>PIX</small><strong>${money(totals.PIX || 0)}</strong></div>
       <div><small>Dinheiro</small><strong>${money(totals.CASH || 0)}</strong></div>
       <div><small>Cartão</small><strong>${money(totals.CARD || 0)}</strong></div>
-      <button class="danger" onclick="closeCash()">Fechar caixa</button>
+      <div class="actions"><button class="small" onclick="supplyCash()">Suprimento</button><button class="small" onclick="withdrawCash()">Sangria</button><button class="danger" onclick="closeCash()">Fechar caixa</button></div>
     </div>`;
 }
 
@@ -275,3 +275,6 @@ connectRealtime((event,payload)=>{
     Promise.all([loadOrders(),loadCash()]);
   }
 });
+
+async function supplyCash(){const v=prompt('Valor do suprimento (R$):','0,00');if(v===null)return;const d=prompt('Descrição:','Reforço de caixa')||'';await api('/api/staff/cash/supply',{method:'POST',body:JSON.stringify({valueCents:toCents(v),description:d})});notify('Suprimento registrado','Movimentação adicionada.','success');loadCash()}
+async function withdrawCash(){const v=prompt('Valor da sangria (R$):','0,00');if(v===null)return;const d=prompt('Descrição:','Retirada de caixa')||'';await api('/api/staff/cash/withdrawal',{method:'POST',body:JSON.stringify({valueCents:toCents(v),description:d})});notify('Sangria registrada','Movimentação adicionada.','warning');loadCash()}

@@ -9,7 +9,7 @@ fi
 
 export ESPETARIA_ENV=development
 export ESPETARIA_DEMO=true
-export ESPETARIA_DB="${ESPETARIA_DB:-data/teste_v0.4.9.db}"
+export ESPETARIA_DB="${ESPETARIA_DB:-data/teste_v0.6.1.db}"
 
 echo "Banco de testes: $ESPETARIA_DB"
 exec .venv/bin/python run.py

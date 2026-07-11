@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-cd "$(dirname "$0")"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$PROJECT_DIR"
 
 echo "=========================================="
 echo " EspetariaOS - Preparação do ambiente"
@@ -14,7 +15,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 if ! python3 -c "import venv" >/dev/null 2>&1; then
-  echo "O módulo venv não está disponível."
+  echo "ERRO: o módulo venv não está disponível."
   echo "Execute: sudo apt update && sudo apt install -y python3-venv"
   exit 1
 fi
@@ -34,21 +35,27 @@ python -m pip install --upgrade pip setuptools wheel
 echo "Instalando dependências do projeto..."
 python -m pip install -r requirements.txt
 
-echo "Verificando suporte ao WebSocket..."
+mkdir -p data backups logs
+
+echo "Verificando dependências essenciais..."
 python - <<'PY'
 import fastapi
 import uvicorn
 import websockets
-import wsproto
 import psutil
+
 print("FastAPI ........ OK")
 print("Uvicorn ........ OK")
 print("WebSockets ..... OK")
-print("wsproto ........ OK")
 print("psutil ......... OK")
-PY
 
-mkdir -p data backups logs
+try:
+    import wsproto
+except ModuleNotFoundError:
+    print("wsproto ........ opcional/não instalado")
+else:
+    print("wsproto ........ OK")
+PY
 
 echo
 echo "=========================================="

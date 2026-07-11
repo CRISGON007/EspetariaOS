@@ -11,6 +11,9 @@ Environment=ESPETARIA_HOST=0.0.0.0
 Environment=ESPETARIA_PORT=8080
 Environment=ESPETARIA_ENV=production
 Environment=ESPETARIA_DEMO=false
+Environment=ESPETARIA_AUTO_BACKUP=true
+Environment=ESPETARIA_BACKUP_CHECK_MINUTES=60
+Environment=ESPETARIA_BACKUP_RETENTION=30
 Environment=ESPETARIA_BACKUPS=/var/lib/espetariaos/backups
 Environment=ESPETARIA_LOGS=/var/log/espetariaos
 Environment=ESPETARIA_DB=/var/lib/espetariaos/espetaria.db

@@ -36,6 +36,9 @@ const PT_BR = Object.freeze({
     PRODUCT_DELETED_OR_DISABLED: 'Produto excluído ou desativado',
     BACKUP_CREATED: 'Backup criado',
     DEMO_ORDER_CREATED: 'Pedido de demonstração criado',
+    AUTOMATIC_BACKUP_CREATED: 'Backup automático criado',
+    AUTOMATIC_BACKUP_FAILED: 'Falha no backup automático',
+    OLD_BACKUPS_REMOVED: 'Backups antigos removidos',
     UNPAID_ORDER_DELIVERED: 'Pedido entregue sem pagamento confirmado',
     CASH_REQUIRED_FOR_DELIVERY: 'Entrega bloqueada por caixa fechado'
   }

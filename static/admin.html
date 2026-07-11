@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>EspetariaOS — Administração</title>
-  <link rel="stylesheet" href="/assets/css/app.css?v=0.4.9">
+  <link rel="stylesheet" href="/assets/css/app.css?v=0.6.1">
 </head>
 <body class="admin-body">
 <header class="topbar admin-topbar">
@@ -21,8 +21,8 @@
 <main class="admin-layout">
   <aside class="admin-sidebar">
     <button class="nav-item active" data-section="dashboard">Painel</button>
-    <button class="nav-item" data-section="products">Produtos</button>
-    <button class="nav-item" data-section="customers">Clientes</button>
+    <button class="nav-item" data-section="products">Produtos</button><button class="nav-item" data-section="sales">Vendas</button>
+    <button class="nav-item" data-section="customers">Clientes</button><button class="nav-item" data-section="audit">Auditoria</button>
     <button class="nav-item" data-section="settings">Configurações</button>
   </aside>
 
@@ -52,6 +52,22 @@
         <article class="dashboard-card">
           <span>Faturamento registrado</span>
           <strong id="dashboardRevenue">R$ 0,00</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Tempo médio de preparo</span>
+          <strong id="dashboardAveragePreparation">0s</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Tempo médio total</span>
+          <strong id="dashboardAverageTotal">0s</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Pedido mais rápido</span>
+          <strong id="dashboardFastestOrder">—</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Pedido mais demorado</span>
+          <strong id="dashboardSlowestOrder">—</strong>
         </article>
       </div>
 
@@ -94,17 +110,19 @@
       </section>
     </div>
 
-    <div id="customersSection" class="admin-section hidden">
-      <div class="page-heading">
-        <div>
-          <span class="eyebrow">Cadastros</span>
-          <h1>Clientes</h1>
-        </div>
-      </div>
-      <section class="empty-state">
-        <strong>Consulta de clientes</strong>
-        <p>Esta tela será conectada à listagem de clientes na próxima etapa do MVP.</p>
-      </section>
+    <div id="salesSection" class="admin-section hidden"><div class="page-heading"><div><span class="eyebrow">Consultas</span><h1>Vendas</h1></div><button id="exportSales" class="primary">Exportar CSV</button></div><section class="panel"><div class="sales-filters"><input id="saleCode" placeholder="Código"><input id="saleCustomer" placeholder="Cliente"><input id="salePhone" placeholder="Telefone"><select id="saleStatus"><option value="">Todos os status</option><option value="RECEIVED">Recebido</option><option value="PREPARING">Em preparo</option><option value="READY">Pronto</option><option value="DELIVERED">Entregue</option><option value="CANCELLED">Cancelado</option></select><select id="salePaymentMethod"><option value="">Todas as formas</option><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option></select><select id="salePaymentStatus"><option value="">Todos os pagamentos</option><option value="PENDING">Pendente</option><option value="PAID">Pago</option></select><input id="saleStartDate" type="date"><input id="saleEndDate" type="date"><button id="searchSales" class="primary">Pesquisar</button></div></section><section class="panel"><div class="panel-header"><h2>Resultados</h2><span id="salesCount">0 vendas</span></div><div id="salesResults" class="dashboard-order-list"></div></section></div><div id="customersSection" class="admin-section hidden">
+      <div class="page-heading"><div><span class="eyebrow">Cadastros</span><h1>Clientes</h1></div></div>
+      <section class="panel"><div class="toolbar"><input id="customerSearch" type="search" placeholder="Buscar por nome ou telefone..."><button id="searchCustomers" class="primary">Pesquisar</button></div></section>
+      <section class="panel"><div class="panel-header"><h2>Clientes cadastrados</h2><span id="customerCount">0 clientes</span></div><div id="customerResults" class="customer-grid"></div></section>
+    </div>
+
+    <div id="auditSection" class="admin-section hidden">
+      <div class="page-heading"><div><span class="eyebrow">Segurança e controle</span><h1>Auditoria</h1></div></div>
+      <section class="panel"><div class="audit-filters">
+        <select id="auditAction"><option value="">Todas as ações</option><option value="LOGIN_SUCCESS">Login realizado</option><option value="LOGIN_FAILED">Tentativa inválida</option><option value="ORDER_CREATED">Pedido criado</option><option value="ORDER_STATUS_CHANGED">Status alterado</option><option value="PAYMENT_CONFIRMED">Pagamento confirmado</option><option value="PRODUCT_CREATED">Produto cadastrado</option><option value="PRODUCT_UPDATED">Produto atualizado</option><option value="CASH_OPENED">Caixa aberto</option><option value="CASH_CLOSED">Caixa fechado</option><option value="CASH_SUPPLY">Suprimento</option><option value="CASH_WITHDRAWAL">Sangria</option><option value="BACKUP_CREATED">Backup manual</option><option value="AUTOMATIC_BACKUP_CREATED">Backup automático</option></select>
+        <input id="auditUser" placeholder="Usuário"><input id="auditStartDate" type="date"><input id="auditEndDate" type="date"><button id="searchAudit" class="primary">Pesquisar</button>
+      </div></section>
+      <section class="panel"><div class="panel-header"><h2>Eventos registrados</h2><span id="auditCount">0 eventos</span></div><div id="auditResults" class="audit-list"></div></section>
     </div>
 
     <div id="settingsSection" class="admin-section hidden">
@@ -142,5 +160,5 @@
 
 
 
-<script src="/assets/js/common.js?v=0.4.9"></script><script src="/assets/js/ptbr.js?v=0.4.9"></script><script src="/assets/js/realtime.js?v=0.4.9"></script><script src="/assets/js/admin.js?v=0.4.9"></script></body>
+<script src="/assets/js/common.js?v=0.6.1"></script><script src="/assets/js/ptbr.js?v=0.6.1"></script><script src="/assets/js/realtime.js?v=0.6.1"></script><script src="/assets/js/admin.js?v=0.6.1"></script></body>
 </html>

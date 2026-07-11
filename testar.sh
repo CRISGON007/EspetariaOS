@@ -5,15 +5,13 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_DIR"
 
 if [[ ! -x ".venv/bin/python" ]]; then
-  echo "Ambiente virtual não encontrado."
-  echo "Execute primeiro: ./install.sh"
+  echo "Ambiente virtual não encontrado. Execute primeiro: ./install.sh"
   exit 1
 fi
 
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "Diretório do projeto: $PROJECT_DIR"
-echo "PYTHONPATH: $PYTHONPATH"
 
 echo "1/3 - Validando sintaxe Python..."
 .venv/bin/python -m compileall -q app tests run.py
