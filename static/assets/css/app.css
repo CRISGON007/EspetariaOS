@@ -119,3 +119,9 @@
 .toast.success{border-left-color:#32a86b}
 .toast.warning{border-left-color:#f2b134}
 .toast.info{border-left-color:#2f8edb}
+
+.track-help{background:#f5eee8;border-radius:10px;padding:11px 13px;color:var(--muted)}
+.track-separator{display:flex;align-items:center;gap:10px;color:var(--muted);text-transform:uppercase;font-size:.75rem;font-weight:800}
+.track-separator::before,.track-separator::after{content:"";height:1px;background:var(--border);flex:1}
+.track-count{font-weight:800;color:var(--muted);margin:18px 0 10px}
+.tracked-orders{display:grid;gap:12px}

@@ -111,11 +111,14 @@ async function removeProduct(id){
   }
 }
 
-document.getElementById('newProduct').addEventListener('click',()=>openForm());
-document.getElementById('productSearch').addEventListener('input',renderProducts);
-document.getElementById('refreshDashboard').addEventListener('click',()=>Promise.all([loadProducts(),loadDashboardOrders()]));
+document.getElementById('newProduct')?.addEventListener('click',()=>openForm());
+document.getElementById('productSearch')?.addEventListener('input',renderProducts);
+document.getElementById('refreshDashboard')?.addEventListener(
+  'click',
+  ()=>Promise.all([loadProducts(),loadDashboardOrders()])
+);
 
-document.getElementById('saveProduct').addEventListener('click',async()=>{
+document.getElementById('saveProduct')?.addEventListener('click',async()=>{
   const id = document.getElementById('productId').value;
   const rawPrice = document.getElementById('productPrice').value
     .replace(/\./g,'')
@@ -147,7 +150,13 @@ document.getElementById('saveProduct').addEventListener('click',async()=>{
   }
 });
 
-Promise.all([loadProducts(),loadDashboardOrders()]);
+Promise.all([loadProducts(),loadDashboardOrders()]).catch(error=>{
+  console.error('Falha ao carregar o painel administrativo:',error);
+  const container=document.getElementById('dashboardOrders');
+  if(container){
+    container.innerHTML=`<p class="message">Não foi possível atualizar o painel: ${error.message}</p>`;
+  }
+});
 
 async function configureDemo(){
   try{
@@ -165,10 +174,30 @@ async function configureDemo(){
     }
   }catch(_){}
 }
+configureDemo();
+
+
+const ADMIN_REFRESH_INTERVAL_MS = 10000;
+
+async function refreshAdminData(){
+  try{
+    await Promise.all([loadProducts(),loadDashboardOrders()]);
+  }catch(e){
+    console.error('Falha ao atualizar o painel administrativo:',e);
+  }
+}
+
 connectRealtime((event,payload)=>{
   if(['ORDER_CREATED','ORDER_STATUS_CHANGED','PAYMENT_CONFIRMED'].includes(event)){
-    if(event==='ORDER_CREATED') notify('Novo pedido',`${payload.code} — ${payload.customer.name}`,'warning');
-    loadDashboardOrders();
+    const messages={
+      ORDER_CREATED:['Novo pedido',`${payload.code} — ${payload.customer.name}`,'warning'],
+      ORDER_STATUS_CHANGED:['Pedido atualizado',`${payload.code}: ${orderStatusLabel(payload.status)}`,'info'],
+      PAYMENT_CONFIRMED:['Pagamento confirmado',payload.code,'success']
+    };
+    const [title,message,type]=messages[event];
+    notify(title,message,type);
+    refreshAdminData();
   }
 });
-configureDemo();
+
+setInterval(refreshAdminData,ADMIN_REFRESH_INTERVAL_MS);

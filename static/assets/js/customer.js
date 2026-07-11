@@ -1,27 +1,362 @@
-let products=[],cart=new Map();const $=id=>document.getElementById(id);const money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);const esc=v=>{const d=document.createElement('div');d.textContent=v??'';return d.innerHTML};
-async function loadProducts(){const r=await fetch('/api/products');products=(await r.json()).items||[];const cats=[...new Set(products.map(p=>p.category))].sort();$('category').innerHTML='<option value="">Todas as categorias</option>'+cats.map(c=>`<option>${c}</option>`).join('');renderProducts()}
-function renderProducts(){const q=$('search').value.toLowerCase(),cat=$('category').value;$('products').innerHTML=products.filter(p=>(!cat||p.category===cat)&&(`${p.name} ${p.description}`.toLowerCase().includes(q))).map(p=>`<article class="product-card"><span class="status">${esc(p.category)}</span><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p><div class="summary"><span class="price">${money(p.price_cents)}</span><button class="primary" onclick="add(${p.id})">Adicionar</button></div></article>`).join('')||'<p>Nenhum produto encontrado.</p>'}
-function add(id){cart.set(id,(cart.get(id)||0)+1);updateCart()}function change(id,d){const n=(cart.get(id)||0)+d;n<=0?cart.delete(id):cart.set(id,n);updateCart();renderCart()}function total(){return [...cart].reduce((s,[id,q])=>s+products.find(p=>p.id===id).price_cents*q,0)}
-function updateCart(){const n=[...cart.values()].reduce((a,b)=>a+b,0);$('cartCount').textContent=`${n} ${n===1?'item':'itens'}`;$('cartTotal').textContent=money(total())}
-function renderCart(){$('cartItems').innerHTML=[...cart].map(([id,q])=>{const p=products.find(x=>x.id===id);return `<div class="cart-row"><div><strong>${esc(p.name)}</strong><br><small>${money(p.price_cents)} cada</small></div><div class="qty"><button type="button" class="small" onclick="change(${id},-1)">−</button><b>${q}</b><button type="button" class="small" onclick="change(${id},1)">+</button></div><span class="price">${money(p.price_cents*q)}</span></div>`}).join('')||'<p>Carrinho vazio.</p>';$('cartDialogTotal').textContent=money(total())}
-$('search').addEventListener('input',renderProducts);$('category').addEventListener('change',renderProducts);$('openCart').addEventListener('click',()=>{renderCart();$('customerName').value=localStorage.getItem('customer_name')||'';$('customerPhone').value=localStorage.getItem('customer_phone')||'';$('cartDialog').showModal()});$('openTrack').addEventListener('click',()=>{$('trackPhone').value=localStorage.getItem('customer_phone')||'';$('trackDialog').showModal()});
-$('finishOrder').addEventListener('click',async()=>{const m=$('cartMessage');m.textContent='';if(!cart.size){m.textContent='Adicione um produto.';return}const name=$('customerName').value.trim(),phone=$('customerPhone').value.trim();try{const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer:{name,phone},paymentMethod:$('paymentMethod').value,notes:$('orderNotes').value,items:[...cart].map(([productId,quantity])=>({productId,quantity}))})});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Erro.');localStorage.setItem('customer_name',name);localStorage.setItem('customer_phone',phone);cart.clear();updateCart();m.className='message success';m.innerHTML=`Pedido criado: <strong>${d.code}</strong><br>Total: ${money(d.totalCents)}`;$('trackPhone').value=phone;$('trackCode').value=d.code}catch(e){m.className='message';m.textContent=e.message}});
-$('trackOrder').addEventListener('click',async()=>{const out=$('trackResult');try{const r=await fetch(`/api/orders/track?phone=${encodeURIComponent($('trackPhone').value)}&code=${encodeURIComponent($('trackCode').value)}`);const o=await r.json();if(!r.ok)throw new Error(o.detail||'Não encontrado.');out.innerHTML=`<article class="order-card"><h3>${o.code}</h3><span class="status ${o.status}">${PT_BR.orderStatus[o.status] || "Status desconhecido"}</span><p>${esc(o.customer.name)}</p><ul>${o.items.map(i=>`<li>${i.quantity}x ${esc(i.name)}</li>`).join('')}</ul><p class="price">${money(o.totalCents)}</p></article>`}catch(e){out.innerHTML=`<p class="message">${e.message}</p>`}});loadProducts();
+let products = [];
+let cart = new Map();
+let lastCreatedOrder = null;
 
-connectRealtime((event,payload)=>{
-  if(event==='ORDER_STATUS_CHANGED'){
-    const savedPhone=(localStorage.getItem('customer_phone')||'').replace(/\D/g,'');
-    if(payload?.customer?.phone===savedPhone){
-      notify('Atualização do pedido',`${payload.code}: ${orderStatusLabel(payload.status)}`,'success');
-      if(document.getElementById('trackCode')?.value===payload.code){
-        document.getElementById('trackOrder')?.click();
-      }
+const $ = id => document.getElementById(id);
+const money = cents =>
+  new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format((cents || 0) / 100);
+
+const esc = value => {
+  const element = document.createElement('div');
+  element.textContent = value ?? '';
+  return element.innerHTML;
+};
+
+function setCheckoutMode(mode) {
+  const button = $('finishOrder');
+
+  if (mode === 'track') {
+    button.textContent = 'Consultar pedido';
+    button.dataset.mode = 'track';
+    return;
+  }
+
+  button.textContent = 'Finalizar pedido';
+  button.dataset.mode = 'finish';
+}
+
+async function loadProducts() {
+  const response = await fetch('/api/products');
+  const data = await response.json();
+  products = data.items || [];
+
+  const categories = [...new Set(products.map(product => product.category))].sort();
+  $('category').innerHTML =
+    '<option value="">Todas as categorias</option>' +
+    categories.map(category => `<option>${esc(category)}</option>`).join('');
+
+  renderProducts();
+}
+
+function renderProducts() {
+  const query = $('search').value.toLowerCase();
+  const category = $('category').value;
+
+  $('products').innerHTML =
+    products
+      .filter(product =>
+        (!category || product.category === category) &&
+        `${product.name} ${product.description}`.toLowerCase().includes(query)
+      )
+      .map(product => `
+        <article class="product-card">
+          <span class="status">${esc(product.category)}</span>
+          <h3>${esc(product.name)}</h3>
+          <p>${esc(product.description)}</p>
+          <div class="summary">
+            <span class="price">${money(product.price_cents)}</span>
+            <button class="primary" onclick="add(${product.id})">Adicionar</button>
+          </div>
+        </article>
+      `)
+      .join('') || '<p>Nenhum produto encontrado.</p>';
+}
+
+function add(id) {
+  cart.set(id, (cart.get(id) || 0) + 1);
+  lastCreatedOrder = null;
+  setCheckoutMode('finish');
+  updateCart();
+}
+
+function change(id, delta) {
+  const quantity = (cart.get(id) || 0) + delta;
+
+  if (quantity <= 0) {
+    cart.delete(id);
+  } else {
+    cart.set(id, quantity);
+  }
+
+  if (cart.size > 0) {
+    lastCreatedOrder = null;
+    setCheckoutMode('finish');
+  }
+
+  updateCart();
+  renderCart();
+}
+
+function total() {
+  return [...cart].reduce((sum, [id, quantity]) => {
+    const product = products.find(item => item.id === id);
+    return sum + product.price_cents * quantity;
+  }, 0);
+}
+
+function updateCart() {
+  const count = [...cart.values()].reduce((sum, value) => sum + value, 0);
+  $('cartCount').textContent = `${count} ${count === 1 ? 'item' : 'itens'}`;
+  $('cartTotal').textContent = money(total());
+}
+
+function renderCart() {
+  $('cartItems').innerHTML =
+    [...cart]
+      .map(([id, quantity]) => {
+        const product = products.find(item => item.id === id);
+        return `
+          <div class="cart-row">
+            <div>
+              <strong>${esc(product.name)}</strong><br>
+              <small>${money(product.price_cents)} cada</small>
+            </div>
+            <div class="qty">
+              <button type="button" class="small" onclick="change(${id},-1)">−</button>
+              <b>${quantity}</b>
+              <button type="button" class="small" onclick="change(${id},1)">+</button>
+            </div>
+            <span class="price">${money(product.price_cents * quantity)}</span>
+          </div>
+        `;
+      })
+      .join('') || '<p>Carrinho vazio.</p>';
+
+  $('cartDialogTotal').textContent = money(total());
+}
+
+function openTrackingForLastOrder() {
+  if (!lastCreatedOrder) {
+    return;
+  }
+
+  $('trackPhone').value = lastCreatedOrder.phone;
+  $('trackCode').value = lastCreatedOrder.code;
+
+  if ($('cartDialog').open) {
+    $('cartDialog').close();
+  }
+
+  if (!$('trackDialog').open) {
+    $('trackDialog').showModal();
+  }
+
+  $('trackOrder').click();
+}
+
+$('search').addEventListener('input', renderProducts);
+$('category').addEventListener('change', renderProducts);
+
+$('openCart').addEventListener('click', () => {
+  renderCart();
+  $('customerName').value = localStorage.getItem('customer_name') || '';
+  $('customerPhone').value = localStorage.getItem('customer_phone') || '';
+
+  if (cart.size > 0) {
+    setCheckoutMode('finish');
+  } else if (lastCreatedOrder) {
+    setCheckoutMode('track');
+  }
+
+  $('cartDialog').showModal();
+});
+
+$('openTrack').addEventListener('click', () => {
+  $('trackPhone').value = localStorage.getItem('customer_phone') || '';
+
+  if (lastCreatedOrder) {
+    $('trackCode').value = lastCreatedOrder.code;
+  }
+
+  $('trackDialog').showModal();
+});
+
+$('finishOrder').addEventListener('click', async () => {
+  if ($('finishOrder').dataset.mode === 'track') {
+    openTrackingForLastOrder();
+    return;
+  }
+
+  const message = $('cartMessage');
+  message.className = 'message';
+  message.textContent = '';
+
+  if (!cart.size) {
+    message.textContent = 'Adicione um produto.';
+    return;
+  }
+
+  const name = $('customerName').value.trim();
+  const phone = $('customerPhone').value.trim();
+
+  try {
+    const response = await fetch('/api/orders', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        customer: {name, phone},
+        paymentMethod: $('paymentMethod').value,
+        notes: $('orderNotes').value,
+        items: [...cart].map(([productId, quantity]) => ({
+          productId,
+          quantity
+        }))
+      })
+    });
+
+    const order = await response.json();
+
+    if (!response.ok) {
+      throw new Error(order.detail || 'Não foi possível criar o pedido.');
+    }
+
+    localStorage.setItem('customer_name', name);
+    localStorage.setItem('customer_phone', phone);
+    localStorage.setItem('last_order_code', order.code);
+
+    lastCreatedOrder = {
+      code: order.code,
+      phone: order.customer?.phone || phone.replace(/\D/g, '')
+    };
+
+    cart.clear();
+    updateCart();
+    renderCart();
+
+    $('trackPhone').value = phone;
+    $('trackCode').value = order.code;
+
+    message.className = 'message success';
+    message.innerHTML = `
+      Pedido criado: <strong>${esc(order.code)}</strong><br>
+      Total: ${money(order.totalCents)}<br>
+      Clique em <strong>Consultar pedido</strong> para acompanhar.
+    `;
+
+    setCheckoutMode('track');
+  } catch (error) {
+    message.className = 'message';
+    message.textContent = error.message;
+  }
+});
+
+function trackedOrderCard(order) {
+  return `
+    <article class="order-card">
+      <h3>${esc(order.code)}</h3>
+      <span class="status ${order.status}">
+        ${orderStatusLabel(order.status)}
+      </span>
+      <p>Cliente: <strong>${esc(order.customer.name)}</strong></p>
+      <p><small>${new Date(order.createdAt).toLocaleString('pt-BR')}</small></p>
+      <ul>
+        ${order.items
+          .map(item => `<li>${item.quantity}x ${esc(item.name)}</li>`)
+          .join('')}
+      </ul>
+      <p class="price">${money(order.totalCents)}</p>
+      <p>
+        Pagamento:
+        <strong>${paymentStatusLabel(order.paymentStatus)}</strong>
+        · ${paymentMethodLabel(order.paymentMethod)}
+      </p>
+    </article>
+  `;
+}
+
+async function queryTrackedOrders() {
+  const output = $('trackResult');
+  const phone = $('trackPhone').value.trim();
+  const code = $('trackCode').value.trim();
+
+  if (!phone && !code) {
+    output.innerHTML =
+      '<p class="message">Informe o telefone ou o código do pedido.</p>';
+    return;
+  }
+
+  output.innerHTML = '<p>Consultando...</p>';
+
+  try {
+    const params = new URLSearchParams();
+
+    if (phone) {
+      params.set('phone', phone);
+    }
+
+    if (code) {
+      params.set('code', code);
+    }
+
+    const response = await fetch(`/api/orders/track?${params.toString()}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Pedido não encontrado.');
+    }
+
+    const items = data.items || [];
+
+    output.innerHTML = items.length
+      ? `
+        <p class="track-count">
+          ${items.length}
+          ${items.length === 1 ? 'pedido encontrado' : 'pedidos encontrados'}.
+        </p>
+        <div class="tracked-orders">
+          ${items.map(trackedOrderCard).join('')}
+        </div>
+      `
+      : '<p class="message">Pedido não encontrado.</p>';
+  } catch (error) {
+    output.innerHTML = `<p class="message">${esc(error.message)}</p>`;
+  }
+}
+
+$('trackOrder').addEventListener('click', queryTrackedOrders);
+
+loadProducts();
+
+connectRealtime((event, payload) => {
+  const savedPhone =
+    (localStorage.getItem('customer_phone') || '').replace(/\D/g, '');
+
+  const trackedCode = $('trackCode')?.value.trim();
+  const trackedPhone = $('trackPhone')?.value.replace(/\D/g, '');
+  const trackedDialogIsOpen = Boolean($('trackDialog')?.open);
+
+  const belongsToCustomer =
+    payload?.customer?.phone === savedPhone ||
+    payload?.customer?.phone === trackedPhone;
+
+  const matchesOpenQuery =
+    trackedCode === payload?.code ||
+    (trackedPhone && trackedPhone === payload?.customer?.phone);
+
+  if (event === 'ORDER_STATUS_CHANGED' && belongsToCustomer) {
+    notify(
+      'Atualização do pedido',
+      `${payload.code}: ${orderStatusLabel(payload.status)}`,
+      'success'
+    );
+
+    if (trackedDialogIsOpen && matchesOpenQuery) {
+      queryTrackedOrders();
     }
   }
-  if(event==='PAYMENT_CONFIRMED'){
-    const savedPhone=(localStorage.getItem('customer_phone')||'').replace(/\D/g,'');
-    if(payload?.customer?.phone===savedPhone){
-      notify('Pagamento confirmado',`Pedido ${payload.code}`,'success');
+
+  if (event === 'PAYMENT_CONFIRMED' && belongsToCustomer) {
+    notify(
+      'Pagamento confirmado',
+      `Pedido ${payload.code}`,
+      'success'
+    );
+
+    if (trackedDialogIsOpen && matchesOpenQuery) {
+      queryTrackedOrders();
     }
   }
 });

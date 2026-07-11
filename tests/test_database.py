@@ -16,7 +16,11 @@ def smoke_test() -> None:
             }
         )
         assert order["totalCents"] > 0
-        assert db.track_order("11999998888", order["code"]) is not None
+        assert len(db.track_orders(phone="11999998888")) == 1
+        assert len(db.track_orders(code=order["code"])) == 1
+        assert len(
+            db.track_orders(phone="11999998888", code=order["code"])
+        ) == 1
 
 
 if __name__ == "__main__":

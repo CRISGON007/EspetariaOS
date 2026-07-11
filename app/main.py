@@ -34,7 +34,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="EspetariaOS API",
-    version="0.4.3",
+    version="0.4.9",
     description="MVP para catálogo, pedidos, caixa e administração.",
     docs_url="/docs" if settings.development else None,
     redoc_url="/redoc" if settings.development else None,
@@ -82,6 +82,7 @@ class OrderInput(BaseModel):
 
 class StatusInput(BaseModel):
     status: str
+    confirmUnpaidDelivery: bool = False
 
 
 class PaymentInput(BaseModel):
@@ -138,7 +139,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({
             "event": "CONNECTED",
-            "payload": {"service": "EspetariaOS", "version": "0.4.3"},
+            "payload": {"service": "EspetariaOS", "version": "0.4.9"},
         })
         while True:
             await websocket.receive_text()
@@ -150,7 +151,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "service": "EspetariaOS", "version": "0.4.3"}
+    return {"ok": True, "service": "EspetariaOS", "version": "0.4.9"}
 
 
 @app.get("/api/products")
@@ -181,11 +182,19 @@ async def create_order(data: OrderInput) -> dict[str, Any]:
 
 
 @app.get("/api/orders/track")
-def track_order(phone: str, code: str) -> dict[str, Any]:
-    order = database.track_order(phone, code)
-    if order is None:
+def track_order(
+    phone: str = "",
+    code: str = "",
+) -> dict[str, Any]:
+    try:
+        orders = database.track_orders(phone=phone, code=code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not orders:
         raise HTTPException(status_code=404, detail="Pedido não encontrado.")
-    return order
+
+    return {"items": orders, "count": len(orders)}
 
 
 @app.post("/api/auth/login")
@@ -265,16 +274,53 @@ async def update_status(
     session: Session = Depends(current_session),
 ) -> dict[str, Any]:
     try:
-        database.update_order_status(order_id, data.status.upper())
+        requested_status = data.status.upper()
+        current_order = database.get_order(order_id)
+
+        if current_order is None:
+            raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+
+        if requested_status == "DELIVERED" and database.current_cash() is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "O caixa ainda não foi aberto. "
+                    "Abra o caixa antes de marcar o pedido como entregue."
+                ),
+            )
+
+        if (
+            requested_status == "DELIVERED"
+            and current_order["paymentStatus"] != "PAID"
+            and not data.confirmUnpaidDelivery
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "O pagamento deste pedido ainda não foi confirmado. "
+                    "Confirme a entrega sem pagamento para continuar."
+                ),
+            )
+
+        database.update_order_status(order_id, requested_status)
         database.add_audit_log(
             "ORDER_STATUS_CHANGED",
-            f"Pedido {order_id}: {data.status.upper()}",
+            f"Pedido {order_id}: {requested_status}",
             session.user_id,
             session.name,
         )
         order = database.get_order(order_id)
         if order is None:
             raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+
+        if requested_status == "DELIVERED" and order["paymentStatus"] != "PAID":
+            database.add_audit_log(
+                "UNPAID_ORDER_DELIVERED",
+                f"Pedido {order['code']} entregue sem pagamento confirmado",
+                session.user_id,
+                session.name,
+            )
+
         await realtime.broadcast("ORDER_STATUS_CHANGED", order)
         return order
     except ValueError as exc:
@@ -447,7 +493,7 @@ def admin_system_status(
     _: Session = Depends(admin_session),
 ) -> dict[str, Any]:
     return {
-        "system": system_info(settings.database_path, "0.4.3"),
+        "system": system_info(settings.database_path, "0.4.9"),
         "database": database.statistics(),
         "cash": database.current_cash(),
         "services": {
