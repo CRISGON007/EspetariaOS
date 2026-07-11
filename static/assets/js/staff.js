@@ -109,13 +109,73 @@ async function loadOrders(){
   }
 }
 
+async function ensureCashOpenForDelivery(){
+  const data=await api('/api/staff/cash/current');
+
+  if(data.cash) return true;
+
+  const wantsToOpen=confirm(
+    'ATENÇÃO: o caixa ainda não foi aberto.\n\n' +
+    'Deseja abrir o caixa agora antes de entregar o pedido?'
+  );
+
+  if(!wantsToOpen) return false;
+
+  const value=prompt('Informe o valor inicial do caixa (R$):','0,00');
+  if(value===null) return false;
+
+  await api('/api/staff/cash/open',{
+    method:'POST',
+    body:JSON.stringify({valueCents:toCents(value)})
+  });
+
+  notify(
+    'Caixa aberto',
+    'O caixa foi aberto com sucesso. A entrega pode continuar.',
+    'success'
+  );
+
+  await loadCash();
+  return true;
+}
+
 async function setStatus(id,status){
   try{
+    const order=ordersCache.find(item=>item.id===id);
+    let confirmUnpaidDelivery=false;
+
+    if(status==='DELIVERED'){
+      const cashReady=await ensureCashOpenForDelivery();
+      if(!cashReady) return;
+    }
+
+    if(
+      status==='DELIVERED' &&
+      order &&
+      order.paymentStatus!=='PAID'
+    ){
+      confirmUnpaidDelivery=confirm(
+        'ATENÇÃO: o pagamento deste pedido ainda não foi confirmado.\n\n' +
+        'Deseja marcar o pedido como entregue mesmo assim?'
+      );
+
+      if(!confirmUnpaidDelivery) return;
+    }
+
     await api(`/api/staff/orders/${id}/status`,{
       method:'PUT',
-      body:JSON.stringify({status})
+      body:JSON.stringify({status,confirmUnpaidDelivery})
     });
-    await loadOrders();
+
+    if(status==='DELIVERED' && confirmUnpaidDelivery){
+      notify(
+        'Entrega registrada',
+        'O pedido foi entregue sem confirmação de pagamento.',
+        'warning'
+      );
+    }
+
+    await Promise.all([loadOrders(),loadCash()]);
   }catch(e){
     alert(e.message);
   }

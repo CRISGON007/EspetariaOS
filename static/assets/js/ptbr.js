@@ -35,7 +35,9 @@ const PT_BR = Object.freeze({
     PRODUCT_UPDATED: 'Produto atualizado',
     PRODUCT_DELETED_OR_DISABLED: 'Produto excluído ou desativado',
     BACKUP_CREATED: 'Backup criado',
-    DEMO_ORDER_CREATED: 'Pedido de demonstração criado'
+    DEMO_ORDER_CREATED: 'Pedido de demonstração criado',
+    UNPAID_ORDER_DELIVERED: 'Pedido entregue sem pagamento confirmado',
+    CASH_REQUIRED_FOR_DELIVERY: 'Entrega bloqueada por caixa fechado'
   }
 });
 

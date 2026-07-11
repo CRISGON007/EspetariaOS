@@ -458,17 +458,52 @@ class Database:
             ],
         }
 
-    def track_order(self, phone: str, code: str) -> dict[str, Any] | None:
+    def track_orders(
+        self,
+        phone: str = "",
+        code: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        normalized_phone = normalize_phone(phone)
+        normalized_code = code.strip()
+
+        if not normalized_phone and not normalized_code:
+            raise ValueError("Informe o telefone ou o código do pedido.")
+
+        conditions: list[str] = []
+        values: list[Any] = []
+
+        if normalized_phone:
+            if not 10 <= len(normalized_phone) <= 13:
+                raise ValueError("Informe um telefone válido com DDD.")
+            conditions.append("c.phone = ?")
+            values.append(normalized_phone)
+
+        if normalized_code:
+            conditions.append("UPPER(o.code) = UPPER(?)")
+            values.append(normalized_code)
+
+        safe_limit = max(1, min(int(limit), 50))
+        values.append(safe_limit)
+
         with self.connection() as conn:
-            row = conn.execute(
-                """
-                SELECT o.id FROM orders o
+            rows = conn.execute(
+                f"""
+                SELECT o.id
+                FROM orders o
                 JOIN customers c ON c.id = o.customer_id
-                WHERE c.phone = ? AND UPPER(o.code) = UPPER(?)
+                WHERE {' AND '.join(conditions)}
+                ORDER BY o.created_at DESC
+                LIMIT ?
                 """,
-                (normalize_phone(phone), code.strip()),
-            ).fetchone()
-        return self.get_order(row["id"]) if row else None
+                values,
+            ).fetchall()
+
+        return [
+            order
+            for row in rows
+            if (order := self.get_order(int(row["id"]))) is not None
+        ]
 
     def list_orders(self) -> list[dict[str, Any]]:
         with self.connection() as conn:

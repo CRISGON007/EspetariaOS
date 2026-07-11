@@ -78,3 +78,10 @@ connectRealtime((event,payload)=>{
   if(event==='ORDER_CREATED') notify('Novo pedido recebido',payload.code,'warning');
   if(event==='PAYMENT_CONFIRMED') notify('Pagamento confirmado',payload.code,'success');
 });
+
+
+const SYSTEM_REFRESH_INTERVAL_MS = 15000;
+setInterval(
+  ()=>Promise.all([loadStatus(),loadBackups(),loadLogs()]),
+  SYSTEM_REFRESH_INTERVAL_MS
+);
