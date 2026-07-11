@@ -1,4 +1,4 @@
-# EspetariaOS Python v0.5.3
+# EspetariaOS Python v0.7.2
 
 Versão com atualização em tempo real e central de notificações, sem PWA e sem instalação nos aparelhos dos clientes.
 
