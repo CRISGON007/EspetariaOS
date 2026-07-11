@@ -1,0 +1,22 @@
+[Unit]
+Description=EspetariaOS Python
+After=network.target
+
+[Service]
+Type=simple
+User=espetariaos
+Group=espetariaos
+WorkingDirectory=/opt/espetariaos
+Environment=ESPETARIA_HOST=0.0.0.0
+Environment=ESPETARIA_PORT=8080
+Environment=ESPETARIA_ENV=production
+Environment=ESPETARIA_DEMO=false
+Environment=ESPETARIA_BACKUPS=/var/lib/espetariaos/backups
+Environment=ESPETARIA_LOGS=/var/log/espetariaos
+Environment=ESPETARIA_DB=/var/lib/espetariaos/espetaria.db
+ExecStart=/opt/espetariaos/.venv/bin/python /opt/espetariaos/run.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EspetariaOS — Sistema</title>
+  <link rel="stylesheet" href="/assets/css/app.css?v=0.4.3">
+</head>
+<body class="admin-body">
+<header class="topbar admin-topbar">
+  <div><strong>🍢 EspetariaOS — Sistema</strong><small id="userName"></small></div>
+  <nav>
+    <a href="/admin" class="ghost link-button">Administração</a>
+    <a href="/sobre" class="ghost link-button">Sobre</a>
+    <button id="logout" class="ghost">Sair</button>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="page-heading">
+    <div><span class="eyebrow">Manutenção</span><h1>Status da TV Box</h1></div>
+    <button id="refreshSystem" class="primary">Atualizar</button>
+  </div>
+
+  <section id="systemCards" class="dashboard-cards"></section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>Serviços</h2></div>
+    <div id="services" class="service-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Backups do banco</h2>
+      <button id="createBackup" class="primary">Criar backup agora</button>
+    </div>
+    <div id="backups" class="dashboard-order-list"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>Auditoria recente</h2></div>
+    <div id="auditLogs" class="audit-list"></div>
+  </section>
+</main>
+
+<script src="/assets/js/common.js?v=0.4.3"></script><script src="/assets/js/ptbr.js?v=0.4.3"></script>
+<script src="/assets/js/system.js?v=0.4.3"></script>
+<script src="/assets/js/realtime.js?v=0.4.3"></script></body>
+</html>

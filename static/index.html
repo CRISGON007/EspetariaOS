@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EspetariaOS — Catálogo</title><link rel="stylesheet" href="/assets/css/app.css?v=0.4.3">
+</head><body>
+<header class="topbar"><div><strong>🍢 EspetariaOS</strong><small>Catálogo e pedidos</small></div>
+<nav><button id="openTrack" class="ghost">Rastrear pedido</button></nav></header>
+<main class="container">
+<section class="hero"><div><span class="eyebrow">Pedido rápido pelo celular</span><h1>Escolha seus produtos e acompanhe o preparo</h1><p>Cadastre nome e telefone ao finalizar o primeiro pedido.</p></div>
+<div class="hero-card"><span id="cartCount">0 itens</span><strong id="cartTotal">R$ 0,00</strong><button id="openCart" class="primary">Abrir carrinho</button></div></section>
+<section class="toolbar"><input id="search" type="search" placeholder="Buscar produto..."><select id="category"><option value="">Todas as categorias</option></select></section>
+<section id="products" class="product-grid"></section></main>
+<dialog id="cartDialog"><form method="dialog" class="dialog-card wide"><div class="dialog-header"><h2>Seu pedido</h2><button value="cancel" class="icon-button">✕</button></div>
+<div id="cartItems"></div><div class="summary"><span>Total</span><strong id="cartDialogTotal">R$ 0,00</strong></div>
+<label>Nome completo<input id="customerName" autocomplete="name"></label><label>Telefone com DDD<input id="customerPhone" inputmode="tel" autocomplete="tel"></label>
+<label>Observação<textarea id="orderNotes" rows="3"></textarea></label><label>Pagamento<select id="paymentMethod"><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option></select></label>
+<button id="finishOrder" type="button" class="primary full">Finalizar pedido</button><p id="cartMessage" class="message"></p></form></dialog>
+<dialog id="trackDialog"><form method="dialog" class="dialog-card"><div class="dialog-header"><h2>Rastrear pedido</h2><button value="cancel" class="icon-button">✕</button></div>
+<label>Telefone<input id="trackPhone" inputmode="tel"></label><label>Código do pedido<input id="trackCode"></label><button id="trackOrder" type="button" class="primary full">Consultar</button><div id="trackResult"></div></form></dialog>
+<script src="/assets/js/ptbr.js?v=0.4.3"></script><script src="/assets/js/customer.js?v=0.4.3"></script><script src="/assets/js/realtime.js?v=0.4.3"></script></body></html>

@@ -1,0 +1,4 @@
+const token=localStorage.getItem('espetaria_token');const user=JSON.parse(localStorage.getItem('espetaria_user')||'null');
+function money(c){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((c||0)/100)}
+async function api(path,options={}){const headers={'Content-Type':'application/json',...(options.headers||{})};if(token)headers.Authorization=`Bearer ${token}`;const r=await fetch(path,{...options,headers});const d=await r.json().catch(()=>({}));if(r.status===401){localStorage.clear();location.href='/login';throw new Error('Sessão expirada.')}if(!r.ok)throw new Error(d.detail||d.error||'Erro.');return d}
+function logout(){localStorage.clear();location.href='/login'}if(!token||!user)location.href='/login';document.getElementById('logout')?.addEventListener('click',logout);if(document.getElementById('userName'))document.getElementById('userName').textContent=`${user.name} — ${user.role==='ADMIN'?'Administrador':'Atendente'}`;

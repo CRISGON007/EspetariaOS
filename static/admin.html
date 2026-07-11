@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EspetariaOS — Administração</title>
+  <link rel="stylesheet" href="/assets/css/app.css?v=0.4.3">
+</head>
+<body class="admin-body">
+<header class="topbar admin-topbar">
+  <div>
+    <strong>🍢 EspetariaOS — Administração</strong>
+    <small id="userName"></small>
+  </div>
+  <nav>
+    <a href="/atendimento" class="ghost link-button">Painel de pedidos</a>
+    <button id="logout" class="ghost">Sair</button>
+  </nav>
+</header>
+
+<main class="admin-layout">
+  <aside class="admin-sidebar">
+    <button class="nav-item active" data-section="dashboard">Painel</button>
+    <button class="nav-item" data-section="products">Produtos</button>
+    <button class="nav-item" data-section="customers">Clientes</button>
+    <button class="nav-item" data-section="settings">Configurações</button>
+  </aside>
+
+  <section class="admin-content">
+    <div id="dashboardSection" class="admin-section">
+      <div class="page-heading">
+        <div>
+          <span class="eyebrow">Visão geral</span>
+          <h1>Painel administrativo</h1>
+        </div>
+        <div class="actions"><button id="demoOrder" class="small hidden">Gerar pedido demo</button><button id="refreshPainel" class="primary">Atualizar</button></div>
+      </div>
+
+      <div class="dashboard-cards">
+        <article class="dashboard-card">
+          <span>Produtos cadastrados</span>
+          <strong id="dashboardProducts">0</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Produtos disponíveis</span>
+          <strong id="dashboardAvailable">0</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Pedidos ativos</span>
+          <strong id="dashboardActiveOrders">0</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Faturamento registrado</span>
+          <strong id="dashboardRevenue">R$ 0,00</strong>
+        </article>
+      </div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Resumo dos pedidos</h2>
+        </div>
+        <div id="dashboardOrders" class="dashboard-order-list"></div>
+      </section>
+    </div>
+
+    <div id="productsSection" class="admin-section hidden">
+      <div class="page-heading">
+        <div>
+          <span class="eyebrow">Catálogo</span>
+          <h1>Produtos</h1>
+        </div>
+        <button id="newProduct" class="primary">Novo produto</button>
+      </div>
+
+      <section class="panel">
+        <div class="toolbar">
+          <input id="productSearch" type="search" placeholder="Buscar produto por nome ou categoria...">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Categoria</th>
+                <th>Preço</th>
+                <th>Ativo</th>
+                <th>Disponível</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="productRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="customersSection" class="admin-section hidden">
+      <div class="page-heading">
+        <div>
+          <span class="eyebrow">Cadastros</span>
+          <h1>Clientes</h1>
+        </div>
+      </div>
+      <section class="empty-state">
+        <strong>Consulta de clientes</strong>
+        <p>Esta tela será conectada à listagem de clientes na próxima etapa do MVP.</p>
+      </section>
+    </div>
+
+    <div id="settingsSection" class="admin-section hidden">
+      <div class="page-heading">
+        <div>
+          <span class="eyebrow">Sistema</span>
+          <h1>Configurações</h1>
+        </div>
+      </div>
+      <section class="empty-state">
+        <strong>Configurações gerais</strong>
+        <p>Nome da espetaria, chave PIX, impressão e usuários serão adicionados nas próximas versões.</p>
+      </section>
+    </div>
+  </section>
+</main>
+
+<dialog id="productDialog">
+  <form method="dialog" class="dialog-card">
+    <div class="dialog-header">
+      <h2 id="productDialogTitle">Produto</h2>
+      <button value="cancel" class="icon-button">✕</button>
+    </div>
+    <input id="productId" type="hidden">
+    <label>Nome<input id="productName"></label>
+    <label>Categoria<input id="productCategory" value="Espetos"></label>
+    <label>Descrição<textarea id="productDescription" rows="3"></textarea></label>
+    <label>Preço (R$)<input id="productPrice" inputmode="decimal"></label>
+    <label class="check"><input id="productActive" type="checkbox" checked> Produto ativo</label>
+    <label class="check"><input id="productAvailable" type="checkbox" checked> Produto disponível</label>
+    <button id="saveProduct" type="button" class="primary full">Salvar</button>
+    <p id="productMessage" class="message"></p>
+  </form>
+</dialog>
+
+<script src="/assets/js/common.js?v=0.4.3"></script><script src="/assets/js/ptbr.js?v=0.4.3"></script>
+<script src="/assets/js/admin.js?v=0.4.3"></script>
+<script src="/assets/js/realtime.js?v=0.4.3"></script></body>
+</html>

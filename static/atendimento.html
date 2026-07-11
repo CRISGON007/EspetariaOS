@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EspetariaOS — Painel de Pedidos</title>
+  <link rel="stylesheet" href="/assets/css/app.css?v=0.4.3">
+</head>
+<body class="kds-body">
+<header class="topbar kds-topbar">
+  <div>
+    <strong>🍢 EspetariaOS — Painel de Pedidos</strong>
+    <small id="userName"></small>
+  </div>
+  <nav>
+    <span id="clock" class="clock"></span>
+    <a id="adminLink" href="/admin" class="ghost link-button hidden">Administração</a>
+    <button id="logout" class="ghost">Sair</button>
+  </nav>
+</header>
+
+<main class="kds-container">
+  <section class="kds-summary">
+    <div class="kds-stat received"><span>Recebidos</span><strong id="receivedCount">0</strong></div>
+    <div class="kds-stat preparing"><span>Em preparo</span><strong id="preparingCount">0</strong></div>
+    <div class="kds-stat ready"><span>Prontos</span><strong id="readyCount">0</strong></div>
+    <div class="kds-stat cash"><span>Caixa</span><strong id="cashStatus">Fechado</strong></div>
+    <button id="refresh" class="primary large-button">Atualizar</button>
+  </section>
+
+  <section class="cash-strip">
+    <div class="panel-header">
+      <h2>Caixa</h2>
+      <button id="toggleCash" class="small">Mostrar/ocultar</button>
+    </div>
+    <div id="cashPanel"></div>
+  </section>
+
+  <section class="kds-board">
+    <div class="kds-column received-column">
+      <div class="column-title">
+        <span class="status-dot"></span>
+        <h2>Recebidos</h2>
+        <span id="receivedBadge" class="count-badge">0</span>
+      </div>
+      <div id="receivedOrders" class="kds-list"></div>
+    </div>
+
+    <div class="kds-column preparing-column">
+      <div class="column-title">
+        <span class="status-dot"></span>
+        <h2>Em preparo</h2>
+        <span id="preparingBadge" class="count-badge">0</span>
+      </div>
+      <div id="preparingOrders" class="kds-list"></div>
+    </div>
+
+    <div class="kds-column ready-column">
+      <div class="column-title">
+        <span class="status-dot"></span>
+        <h2>Prontos</h2>
+        <span id="readyBadge" class="count-badge">0</span>
+      </div>
+      <div id="readyOrders" class="kds-list"></div>
+    </div>
+
+    <div class="kds-column history-column">
+      <div class="column-title">
+        <span class="status-dot"></span>
+        <h2>Finalizados</h2>
+        <span id="historyBadge" class="count-badge">0</span>
+      </div>
+      <div id="historyOrders" class="kds-list"></div>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/js/common.js?v=0.4.3"></script><script src="/assets/js/ptbr.js?v=0.4.3"></script>
+<script src="/assets/js/staff.js?v=0.4.3"></script>
+<script src="/assets/js/realtime.js?v=0.4.3"></script></body>
+</html>
