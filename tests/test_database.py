@@ -7,7 +7,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.database import Database, validate_brazilian_phone
-from app.system_service import prune_old_backups
+from app.system_service import database_integrity, prune_old_backups
 
 
 def smoke_test() -> None:
@@ -126,6 +126,16 @@ def smoke_test() -> None:
             "PREPARING",
         ]
 
+        db.update_order_status(order["id"], "READY")
+        db.update_order_status(order["id"], "DELIVERED")
+        delivered = db.get_order(order["id"])
+
+        assert delivered is not None
+        assert delivered["status"] == "DELIVERED"
+        assert delivered["statusTimeline"][-1]["status"] == "DELIVERED"
+        assert delivered["statusTimeline"][-1]["durationSeconds"] == 0
+        assert delivered["statusTimeline"][-1]["current"] is False
+
         # Rastreamento.
         assert len(
             db.track_orders(phone="11999998888")
@@ -139,6 +149,39 @@ def smoke_test() -> None:
                 code=order["code"],
             )
         ) == 1
+
+        # Financeiro.
+        expense_id = db.create_expense(
+            "Compra de carvão",
+            "Insumos",
+            "PIX",
+            2500,
+            "2026-07-11",
+            "Teste financeiro",
+            user_name="Administrador",
+        )
+        assert expense_id > 0
+        assert db.list_expenses(category="Insumos")[0]["valueCents"] == 2500
+        finance = db.financial_summary("2026-07-11", "2026-07-11")
+        assert finance["expenseCents"] == 2500
+        assert finance["expenseCount"] == 1
+        db.delete_expense(expense_id)
+        assert db.list_expenses() == []
+
+        # Relatórios gerenciais.
+        report = db.business_report()
+        assert report["summary"]["totalOrders"] >= 1
+        assert report["summary"]["revenueCents"] >= 0
+        assert isinstance(report["daily"], list)
+        assert isinstance(report["topProducts"], list)
+        assert isinstance(report["paymentMethods"], list)
+        assert isinstance(report["statusTotals"], list)
+        assert isinstance(report["topCustomers"], list)
+
+        # Integridade do banco.
+        integrity = database_integrity(str(temp_path / "test.db"))
+        assert integrity["ok"] is True
+        assert integrity["result"].lower() == "ok"
 
         # Retenção de backups.
         backup_dir = temp_path / "backups"

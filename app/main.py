@@ -28,6 +28,7 @@ from app.realtime import realtime
 from app.system_service import (
     create_backup,
     create_daily_backup_if_needed,
+    database_integrity,
     prune_old_backups,
     list_backups,
     safe_backup_path,
@@ -39,7 +40,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="EspetariaOS API",
-    version="0.7.2",
+    version="1.0.1",
     description="MVP para catálogo, pedidos, caixa e administração.",
     docs_url="/docs" if settings.development else None,
     redoc_url="/redoc" if settings.development else None,
@@ -101,6 +102,15 @@ class CashInput(BaseModel):
 class CashMovementInput(BaseModel):
     valueCents: int = Field(gt=0)
     description: str = Field(default="", max_length=300)
+
+
+class ExpenseInput(BaseModel):
+    description: str = Field(min_length=2, max_length=160)
+    category: str = Field(min_length=2, max_length=80)
+    paymentMethod: str
+    valueCents: int = Field(gt=0)
+    expenseDate: str
+    notes: str = Field(default="", max_length=500)
 
 
 class ProductInput(BaseModel):
@@ -180,7 +190,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({
             "event": "CONNECTED",
-            "payload": {"service": "EspetariaOS", "version": "0.7.2"},
+            "payload": {"service": "EspetariaOS", "version": "1.0.1"},
         })
         while True:
             await websocket.receive_text()
@@ -192,7 +202,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "service": "EspetariaOS", "version": "0.7.2"}
+    integrity = database_integrity(settings.database_path)
+    return {
+        "ok": integrity["ok"],
+        "service": "EspetariaOS",
+        "version": "1.0.1",
+        "environment": settings.environment,
+        "database": integrity,
+        "automaticBackup": settings.automatic_backup,
+    }
 
 
 @app.get("/api/products")
@@ -609,13 +627,163 @@ async def admin_stock_movement(data: StockMovementInput, session: Session = Depe
     except ValueError as exc:
         raise HTTPException(status_code=400,detail=str(exc)) from exc
 
+@app.get("/api/admin/finance/summary")
+def admin_finance_summary(
+    start_date: str = "",
+    end_date: str = "",
+    _: Session = Depends(admin_session),
+) -> dict[str, Any]:
+    return database.financial_summary(start_date, end_date)
+
+
+@app.get("/api/admin/finance/expenses")
+def admin_finance_expenses(
+    category: str = "",
+    payment_method: str = "",
+    start_date: str = "",
+    end_date: str = "",
+    query: str = "",
+    _: Session = Depends(admin_session),
+) -> dict[str, Any]:
+    items = database.list_expenses(
+        category, payment_method, start_date, end_date, query
+    )
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/admin/finance/expenses", status_code=201)
+async def admin_create_expense(
+    data: ExpenseInput,
+    session: Session = Depends(admin_session),
+) -> dict[str, Any]:
+    try:
+        expense_id = database.create_expense(
+            data.description, data.category, data.paymentMethod,
+            data.valueCents, data.expenseDate, data.notes,
+            session.user_id, session.name,
+        )
+        database.add_audit_log(
+            "EXPENSE_CREATED",
+            f"Despesa {expense_id}: {data.description}; valor {data.valueCents}",
+            session.user_id,
+            session.name,
+        )
+        await realtime.broadcast("FINANCE_UPDATED", {"id": expense_id})
+        return {"id": expense_id}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/admin/finance/expenses/{expense_id}")
+async def admin_delete_expense(
+    expense_id: int,
+    session: Session = Depends(admin_session),
+) -> dict[str, bool]:
+    try:
+        database.delete_expense(expense_id)
+        database.add_audit_log(
+            "EXPENSE_DELETED",
+            f"Despesa {expense_id} removida",
+            session.user_id,
+            session.name,
+        )
+        await realtime.broadcast("FINANCE_UPDATED", {"id": expense_id})
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/reports")
+def admin_reports(
+    start_date: str = "",
+    end_date: str = "",
+    _: Session = Depends(admin_session),
+) -> dict[str, Any]:
+    return database.business_report(
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@app.get("/api/admin/reports/export.csv")
+def admin_reports_export(
+    start_date: str = "",
+    end_date: str = "",
+    _: Session = Depends(admin_session),
+) -> StreamingResponse:
+    report = database.business_report(
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+
+    summary = report["summary"]
+    writer.writerow(["RELATÓRIO GERENCIAL"])
+    writer.writerow(["Data inicial", start_date or "Todas"])
+    writer.writerow(["Data final", end_date or "Todas"])
+    writer.writerow([])
+    writer.writerow(["Indicador", "Valor"])
+    writer.writerow(["Pedidos", summary["totalOrders"]])
+    writer.writerow([
+        "Receita",
+        f"{summary['revenueCents'] / 100:.2f}".replace(".", ","),
+    ])
+    writer.writerow([
+        "Despesas",
+        f"{summary['expenseCents'] / 100:.2f}".replace(".", ","),
+    ])
+    writer.writerow([
+        "Resultado líquido",
+        f"{summary['netCents'] / 100:.2f}".replace(".", ","),
+    ])
+    writer.writerow([
+        "Ticket médio",
+        f"{summary['averageTicketCents'] / 100:.2f}".replace(".", ","),
+    ])
+    writer.writerow(["Cancelamentos", summary["cancelledOrders"]])
+    writer.writerow(["Taxa de cancelamento (%)", summary["cancellationRate"]])
+    writer.writerow([])
+
+    writer.writerow(["PRODUTOS MAIS VENDIDOS"])
+    writer.writerow(["Produto", "Quantidade", "Total"])
+    for item in report["topProducts"]:
+        writer.writerow([
+            item["name"],
+            item["quantity"],
+            f"{item['totalCents'] / 100:.2f}".replace(".", ","),
+        ])
+
+    writer.writerow([])
+    writer.writerow(["VENDAS POR DIA"])
+    writer.writerow(["Data", "Pedidos", "Receita"])
+    for item in report["daily"]:
+        writer.writerow([
+            item["date"],
+            item["orders"],
+            f"{item['revenueCents'] / 100:.2f}".replace(".", ","),
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition":
+                "attachment; filename=relatorio_gerencial.csv"
+        },
+    )
+
+
 @app.get("/api/admin/system/status")
 def admin_system_status(
     _: Session = Depends(admin_session),
 ) -> dict[str, Any]:
     return {
-        "system": system_info(settings.database_path, "0.7.2"),
+        "system": system_info(settings.database_path, "1.0.1"),
         "database": database.statistics(),
+        "databaseIntegrity": database_integrity(settings.database_path),
         "cash": database.current_cash(),
         "services": {
             "api": "ONLINE",

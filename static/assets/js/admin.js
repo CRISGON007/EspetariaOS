@@ -9,6 +9,8 @@ const sectionMap = {
   products:'productsSection',
   stock:'stockSection',
   sales:'salesSection',
+  finance:'financeSection',
+  reports:'reportsSection',
   customers:'customersSection',
   audit:'auditSection',
   settings:'settingsSection'
@@ -370,6 +372,27 @@ document.getElementById('searchSales')?.addEventListener('click',loadSales);docu
 
 function formatPhone(value){const d=String(value||'').replace(/\D/g,'');if(d.length===11)return `(${d.slice(0,2)})${d.slice(2,7)}-${d.slice(7)}`;if(d.length===10)return `(${d.slice(0,2)})${d.slice(2,6)}-${d.slice(6)}`;return value||''}
 async function loadCustomers(){try{const q=document.getElementById('customerSearch')?.value.trim()||'',d=await api(`/api/admin/customers?query=${encodeURIComponent(q)}`);document.getElementById('customerCount').textContent=`${d.count} ${d.count===1?'cliente':'clientes'}`;document.getElementById('customerResults').innerHTML=d.items.length?d.items.map(c=>`<article class="customer-card"><div><strong>${c.name}</strong><small>${formatPhone(c.phone)}</small></div><div class="customer-stat"><span>Pedidos</span><strong>${c.orderCount}</strong></div><div class="customer-stat"><span>Total pago</span><strong>${money(c.paidTotalCents)}</strong></div><div class="customer-stat"><span>Último pedido</span><strong>${c.lastOrderAt?new Date(c.lastOrderAt).toLocaleString('pt-BR'):'Nenhum'}</strong></div></article>`).join(''):'<p>Nenhum cliente encontrado.</p>'}catch(e){document.getElementById('customerResults').innerHTML=`<p class="message">${e.message}</p>`}}
+function populateAuditActions(){
+  const select=document.getElementById('auditAction');
+  if(!select)return;
+
+  const currentValue=select.value;
+  const entries=Object.entries(PT_BR.auditAction)
+    .sort((a,b)=>a[1].localeCompare(b[1],'pt-BR'));
+
+  select.innerHTML=
+    '<option value="">Todas as ações</option>'+
+    entries.map(([value,label])=>
+      `<option value="${value}">${label}</option>`
+    ).join('');
+
+  if([...select.options].some(option=>option.value===currentValue)){
+    select.value=currentValue;
+  }
+}
+
+populateAuditActions();
+
 function auditParams(){const p=new URLSearchParams(),v={action:document.getElementById('auditAction')?.value,user_name:document.getElementById('auditUser')?.value.trim(),start_date:document.getElementById('auditStartDate')?.value,end_date:document.getElementById('auditEndDate')?.value};Object.entries(v).forEach(([k,x])=>{if(x)p.set(k,x)});return p}
 async function loadAudit(){try{const d=await api(`/api/admin/audit?${auditParams()}`);document.getElementById('auditCount').textContent=`${d.count} ${d.count===1?'evento':'eventos'}`;document.getElementById('auditResults').innerHTML=d.items.length?d.items.map(i=>`<article class="audit-row"><time>${new Date(i.created_at).toLocaleString('pt-BR')}</time><strong>${auditActionLabel(i.action)}</strong><span>${i.user_name||'Sistema'}</span><p>${i.details||''}</p></article>`).join(''):'<p>Nenhum evento encontrado.</p>'}catch(e){document.getElementById('auditResults').innerHTML=`<p class="message">${e.message}</p>`}}
 document.getElementById('searchCustomers')?.addEventListener('click',loadCustomers);document.getElementById('customerSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter')loadCustomers()});document.getElementById('searchAudit')?.addEventListener('click',loadAudit);loadCustomers();loadAudit();
@@ -379,3 +402,213 @@ function stockSituation(p){if(!p.stock_controlled)return ['Sem controle','off'];
 async function loadStock(){try{stockData=await api('/api/admin/stock');const x=stockData.summary||{};document.getElementById('stockControlledCount').textContent=x.controlledProducts||0;document.getElementById('stockUnitsCount').textContent=x.totalUnits||0;document.getElementById('stockLowCount').textContent=x.lowStockProducts||0;document.getElementById('stockOutCount').textContent=x.outOfStockProducts||0;document.getElementById('stockValue').textContent=money(x.stockValueCents||0);const ps=(stockData.products||[]).filter(p=>p.stock_controlled);document.getElementById('stockProductRows').innerHTML=ps.length?ps.map(p=>{const [l,c]=stockSituation(p);return `<tr><td><strong>${p.name}</strong><br><small>${p.category}</small></td><td>${p.stock_quantity}</td><td>${p.minimum_stock}</td><td><span class="availability ${c}">${l}</span></td><td><button class="small" onclick="openStockMovement(${p.id})">Movimentar</button></td></tr>`}).join(''):'<tr><td colspan="5">Nenhum produto controlado.</td></tr>';document.getElementById('stockMovementRows').innerHTML=(stockData.movements||[]).length?stockData.movements.map(i=>`<article class="stock-movement-row"><div><strong>${i.product_name}</strong><small>${new Date(i.created_at).toLocaleString('pt-BR')}</small></div><span class="stock-type ${i.movement_type}">${stockMovementLabel(i.movement_type)}</span><strong class="${i.quantity>=0?'stock-positive':'stock-negative'}">${i.quantity>=0?'+':''}${i.quantity}</strong><span>Saldo: ${i.balance_after}</span><p>${i.reason||''}</p></article>`).join(''):'<p>Nenhuma movimentação.</p>'}catch(e){document.getElementById('stockMovementRows').innerHTML=`<p class="message">${e.message}</p>`}}
 function openStockMovement(id){const p=(stockData.products||[]).find(x=>x.id===id);if(!p)return;document.getElementById('stockProductId').value=id;document.getElementById('stockProductName').textContent=`${p.name} — saldo: ${p.stock_quantity}`;document.getElementById('stockMovementType').value='ENTRY';document.getElementById('stockMovementQuantity').value='';document.getElementById('stockMovementReason').value='';stockDialog.showModal()}
 document.getElementById('saveStockMovement')?.addEventListener('click',async()=>{const t=document.getElementById('stockMovementType').value;let q=Number(document.getElementById('stockMovementQuantity').value||0);if(t==='LOSS')q=-Math.abs(q);try{await api('/api/admin/stock/movements',{method:'POST',body:JSON.stringify({productId:Number(document.getElementById('stockProductId').value),quantity:q,movementType:t,reason:document.getElementById('stockMovementReason').value})});stockDialog.close();await Promise.all([loadStock(),loadProducts()]);notify('Estoque atualizado','Movimentação registrada.','success')}catch(e){document.getElementById('stockMovementMessage').textContent=e.message}});document.getElementById('refreshStock')?.addEventListener('click',loadStock);loadStock();connectRealtime(event=>{if(event==='STOCK_UPDATED'||event==='ORDER_CREATED'){loadStock();loadProducts()}});
+
+
+const expenseDialog=document.getElementById('expenseDialog');
+function financeParams(){const p=new URLSearchParams();const v={start_date:document.getElementById('financeStartDate')?.value,end_date:document.getElementById('financeEndDate')?.value};Object.entries(v).forEach(([k,x])=>{if(x)p.set(k,x)});return p}
+function expenseParams(){const p=financeParams();const v={query:document.getElementById('expenseQuery')?.value.trim(),category:document.getElementById('expenseCategory')?.value,payment_method:document.getElementById('expensePaymentMethod')?.value};Object.entries(v).forEach(([k,x])=>{if(x)p.set(k,x)});return p}
+async function loadFinance(){
+  try{
+    const [summary,expenses]=await Promise.all([
+      api(`/api/admin/finance/summary?${financeParams()}`),
+      api(`/api/admin/finance/expenses?${expenseParams()}`)
+    ]);
+    document.getElementById('financeRevenue').textContent=money(summary.revenueCents||0);
+    document.getElementById('financeExpenses').textContent=money(summary.expenseCents||0);
+    document.getElementById('financePaidOrders').textContent=summary.paidOrders||0;
+    const balance=document.getElementById('financeBalance');
+    balance.textContent=money(summary.balanceCents||0);
+    balance.classList.toggle('finance-negative',(summary.balanceCents||0)<0);
+    balance.classList.toggle('finance-positive',(summary.balanceCents||0)>=0);
+    document.getElementById('expenseCount').textContent=`${expenses.count} ${expenses.count===1?'despesa':'despesas'}`;
+    document.getElementById('expenseResults').innerHTML=expenses.items.length?expenses.items.map(item=>`<article class="expense-row"><div><strong>${item.description}</strong><small>${new Date(`${item.expenseDate}T12:00:00`).toLocaleDateString('pt-BR')} · ${item.category}</small></div><span>${paymentMethodLabel(item.paymentMethod)}</span><strong class="expense-value">-${money(item.valueCents)}</strong><span>${item.createdBy||'Sistema'}</span><button class="danger small" onclick="removeExpense(${item.id})">Excluir</button>${item.notes?`<p>${item.notes}</p>`:''}</article>`).join(''):'<p>Nenhuma despesa encontrada.</p>';
+    document.getElementById('expenseCategorySummary').innerHTML=(summary.expensesByCategory||[]).length?summary.expensesByCategory.map(item=>`<article class="category-summary-card"><span>${item.category}</span><strong>${money(item.totalCents)}</strong></article>`).join(''):'<p>Nenhuma despesa no período.</p>';
+  }catch(error){document.getElementById('expenseResults').innerHTML=`<p class="message">${error.message}</p>`}
+}
+document.getElementById('newExpense')?.addEventListener('click',()=>{
+  document.getElementById('expenseDescription').value='';
+  document.getElementById('expenseDialogCategory').value='';
+  document.getElementById('expenseDialogPayment').value='';
+  document.getElementById('expenseValue').value='';
+  document.getElementById('expenseDate').value=new Date().toISOString().slice(0,10);
+  document.getElementById('expenseNotes').value='';
+  document.getElementById('expenseMessage').textContent='';
+  expenseDialog.showModal();
+});
+document.getElementById('saveExpense')?.addEventListener('click',async()=>{
+  const description=document.getElementById('expenseDescription').value.trim();
+  const category=document.getElementById('expenseDialogCategory').value;
+  const paymentMethod=document.getElementById('expenseDialogPayment').value;
+  const valueText=document.getElementById('expenseValue').value.trim();
+  const expenseDate=document.getElementById('expenseDate').value;
+  const message=document.getElementById('expenseMessage');
+  if(!description||!category||!paymentMethod||!valueText||!expenseDate){message.textContent='Preencha todos os campos obrigatórios.';return}
+  try{
+    await api('/api/admin/finance/expenses',{method:'POST',body:JSON.stringify({description,category,paymentMethod,valueCents:toCents(valueText),expenseDate,notes:document.getElementById('expenseNotes').value})});
+    expenseDialog.close();await loadFinance();notify('Despesa registrada','O lançamento foi adicionado ao financeiro.','success');
+  }catch(error){message.textContent=error.message}
+});
+async function removeExpense(id){if(!confirm('Excluir esta despesa?'))return;try{await api(`/api/admin/finance/expenses/${id}`,{method:'DELETE'});await loadFinance()}catch(error){alert(error.message)}}
+document.getElementById('searchFinance')?.addEventListener('click',loadFinance);
+loadFinance();
+connectRealtime(event=>{if(event==='FINANCE_UPDATED'||event==='PAYMENT_CONFIRMED')loadFinance()});
+
+
+function reportParams(){
+  const params=new URLSearchParams();
+  const start=document.getElementById('reportStartDate')?.value;
+  const end=document.getElementById('reportEndDate')?.value;
+  if(start)params.set('start_date',start);
+  if(end)params.set('end_date',end);
+  return params;
+}
+
+function renderBarChart(items){
+  if(!items.length)return '<p>Nenhum dado no período.</p>';
+  const max=Math.max(...items.map(item=>item.revenueCents||0),1);
+  return items.map(item=>`
+    <div class="bar-row">
+      <span>${new Date(`${item.date}T12:00:00`).toLocaleDateString('pt-BR')}</span>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${Math.max(3,(item.revenueCents/max)*100)}%"></div>
+      </div>
+      <strong>${money(item.revenueCents)}</strong>
+      <small>${item.orders} pedidos</small>
+    </div>
+  `).join('');
+}
+
+function rankingHtml(items,label,valueFormatter){
+  if(!items.length)return '<p>Nenhum dado no período.</p>';
+  const max=Math.max(...items.map(valueFormatter.raw),1);
+  return items.map((item,index)=>{
+    const value=valueFormatter.raw(item);
+    return `
+      <div class="ranking-row">
+        <span class="ranking-position">${index+1}</span>
+        <div class="ranking-main">
+          <strong>${label(item)}</strong>
+          <div class="ranking-track">
+            <div class="ranking-fill" style="width:${Math.max(3,(value/max)*100)}%"></div>
+          </div>
+        </div>
+        <span>${valueFormatter.text(item)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadReports(){
+  try{
+    const report=await api(`/api/admin/reports?${reportParams().toString()}`);
+    const summary=report.summary||{};
+
+    document.getElementById('reportOrders').textContent=summary.totalOrders||0;
+    document.getElementById('reportRevenue').textContent=money(summary.revenueCents||0);
+    document.getElementById('reportExpenses').textContent=money(summary.expenseCents||0);
+    document.getElementById('reportAverageTicket').textContent=money(summary.averageTicketCents||0);
+    document.getElementById('reportCancellationRate').textContent=
+      `${Number(summary.cancellationRate||0).toLocaleString('pt-BR')}%`;
+    document.getElementById('reportPreparationTime').textContent=
+      formatDuration(summary.averagePreparationSeconds||0);
+
+    const net=document.getElementById('reportNet');
+    net.textContent=money(summary.netCents||0);
+    net.classList.toggle('finance-positive',(summary.netCents||0)>=0);
+    net.classList.toggle('finance-negative',(summary.netCents||0)<0);
+
+    document.getElementById('dailyRevenueChart').innerHTML=
+      renderBarChart(report.daily||[]);
+
+    document.getElementById('topProductsReport').innerHTML=
+      rankingHtml(
+        report.topProducts||[],
+        item=>item.name,
+        {
+          raw:item=>item.quantity,
+          text:item=>`${item.quantity} un. · ${money(item.totalCents)}`
+        }
+      );
+
+    document.getElementById('paymentMethodsReport').innerHTML=
+      rankingHtml(
+        report.paymentMethods||[],
+        item=>paymentMethodLabel(item.method),
+        {
+          raw:item=>item.totalCents,
+          text:item=>`${item.orders} pedidos · ${money(item.totalCents)}`
+        }
+      );
+
+    document.getElementById('statusReport').innerHTML=
+      rankingHtml(
+        report.statusTotals||[],
+        item=>orderStatusLabel(item.status),
+        {
+          raw:item=>item.total,
+          text:item=>`${item.total} pedidos`
+        }
+      );
+
+    document.getElementById('topCustomersReport').innerHTML=
+      (report.topCustomers||[]).length
+        ? report.topCustomers.map((item,index)=>`
+          <article class="customer-ranking-row">
+            <span>${index+1}</span>
+            <div>
+              <strong>${item.name}</strong>
+              <small>${formatPhone(item.phone)}</small>
+            </div>
+            <span>${item.orders} pedidos</span>
+            <strong>${money(item.totalCents)}</strong>
+          </article>
+        `).join('')
+        : '<p>Nenhum cliente no período.</p>';
+  }catch(error){
+    document.getElementById('dailyRevenueChart').innerHTML=
+      `<p class="message">${error.message}</p>`;
+  }
+}
+
+document.getElementById('refreshReports')?.addEventListener('click',loadReports);
+
+document.getElementById('exportReport')?.addEventListener('click',()=>{
+  const url=`/api/admin/reports/export.csv?${reportParams().toString()}`;
+  fetch(url,{headers:{Authorization:`Bearer ${token}`}})
+    .then(async response=>{
+      if(!response.ok){
+        throw new Error((await response.json()).detail||'Erro ao exportar.');
+      }
+      return response.blob();
+    })
+    .then(blob=>{
+      const href=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=href;
+      link.download='relatorio_gerencial.csv';
+      link.click();
+      URL.revokeObjectURL(href);
+    })
+    .catch(error=>alert(error.message));
+});
+
+const reportEnd=new Date();
+const reportStart=new Date();
+reportStart.setDate(reportStart.getDate()-29);
+document.getElementById('reportStartDate').value=
+  reportStart.toISOString().slice(0,10);
+document.getElementById('reportEndDate').value=
+  reportEnd.toISOString().slice(0,10);
+
+loadReports();
+
+connectRealtime(event=>{
+  if([
+    'ORDER_CREATED',
+    'ORDER_STATUS_CHANGED',
+    'PAYMENT_CONFIRMED',
+    'FINANCE_UPDATED'
+  ].includes(event)){
+    loadReports();
+  }
+});

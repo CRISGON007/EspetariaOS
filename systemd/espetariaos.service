@@ -20,6 +20,11 @@ Environment=ESPETARIA_DB=/var/lib/espetariaos/espetaria.db
 ExecStart=/opt/espetariaos/.venv/bin/python /opt/espetariaos/run.py
 Restart=always
 RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/espetariaos /var/log/espetariaos
 
 [Install]
 WantedBy=multi-user.target

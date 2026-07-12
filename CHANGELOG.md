@@ -1,17 +1,12 @@
 # Changelog
 
-## v0.7.2
+## v1.0.1
 
-### Corrigido
-- Corrigida a variável temporária usada no teste de retenção de backups.
-- `test_database.py` preserva todos os testes anteriores.
-- `testar.sh` resolve automaticamente a raiz do projeto.
-- Removido checklist antigo duplicado do pacote.
+### Interface
+- Adicionados os botões Sistema e Sobre no cabeçalho do Painel Administrativo.
+- A ordem agora é: Painel de pedidos, Sistema, Sobre e Sair.
 
-### Validado
-- Produtos e estoque.
-- Movimentações de estoque.
-- Telefones brasileiros.
-- Pedidos, clientes e rastreamento.
-- Histórico de status.
-- Retenção de backups.
+### Permissões
+- O botão Administração do Painel de Pedidos é exibido somente para usuários
+  com perfil Administrador.
+- Para usuários Atendentes, o link é removido do DOM.

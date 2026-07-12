@@ -1,4 +1,11 @@
-if(user.role==='ADMIN') document.getElementById('adminLink').classList.remove('hidden');
+const adminLink=document.getElementById('adminLink');
+
+if(user?.role==='ADMIN'){
+  adminLink?.classList.remove('hidden');
+}else{
+  // Usuários atendentes não devem visualizar nem manter o link no DOM.
+  adminLink?.remove();
+}
 
 const labels = PT_BR.orderStatus;
 
@@ -9,12 +16,24 @@ function updateClock(){
     new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
-function elapsed(createdAt){
-  const diff = Math.max(0, Date.now() - new Date(createdAt).getTime());
-  const totalMinutes = Math.floor(diff / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
+function elapsed(order){
+  const terminalStatuses=['DELIVERED','CANCELLED'];
+  const endAt=terminalStatuses.includes(order.status)
+    ? order.updatedAt
+    : new Date().toISOString();
+
+  const diff=Math.max(
+    0,
+    new Date(endAt).getTime()-new Date(order.createdAt).getTime()
+  );
+
+  const totalMinutes=Math.floor(diff/60000);
+  const hours=Math.floor(totalMinutes/60);
+  const minutes=totalMinutes%60;
+
+  return hours>0
+    ? `${hours}h ${minutes}min`
+    : `${minutes} min`;
 }
 
 function card(order){
@@ -42,7 +61,7 @@ function card(order){
           <small>Pedido</small>
           <h3>${order.code}</h3>
         </div>
-        <span class="elapsed">${elapsed(order.createdAt)}</span>
+        <span class="elapsed">${elapsed(order)}</span>
       </div>
 
       <div class="customer-block">
@@ -109,29 +128,36 @@ async function loadOrders(){
   }
 }
 
-async function ensureCashOpenForDelivery(){
+async function ensureCashOpen(actionLabel){
   const data=await api('/api/staff/cash/current');
 
   if(data.cash) return true;
 
   const wantsToOpen=confirm(
     'ATENÇÃO: o caixa ainda não foi aberto.\n\n' +
-    'Deseja abrir o caixa agora antes de entregar o pedido?'
+    `É necessário abrir o caixa antes de ${actionLabel}.\n\n` +
+    'Deseja abrir o caixa agora?'
   );
 
   if(!wantsToOpen) return false;
 
-  const value=prompt('Informe o valor inicial do caixa (R$):','0,00');
+  const value=prompt(
+    'Informe o valor inicial do caixa (R$):',
+    '0,00'
+  );
+
   if(value===null) return false;
 
   await api('/api/staff/cash/open',{
     method:'POST',
-    body:JSON.stringify({valueCents:toCents(value)})
+    body:JSON.stringify({
+      valueCents:toCents(value)
+    })
   });
 
   notify(
     'Caixa aberto',
-    'O caixa foi aberto com sucesso. A entrega pode continuar.',
+    `O caixa foi aberto com sucesso. Agora é possível ${actionLabel}.`,
     'success'
   );
 
@@ -145,7 +171,7 @@ async function setStatus(id,status){
     let confirmUnpaidDelivery=false;
 
     if(status==='DELIVERED'){
-      const cashReady=await ensureCashOpenForDelivery();
+      const cashReady=await ensureCashOpen('entregar o pedido');
       if(!cashReady) return;
     }
 
@@ -182,14 +208,42 @@ async function setStatus(id,status){
 }
 
 async function pay(id,defaultMethod){
-  const method = prompt('Forma de pagamento: PIX, CASH ou CARD', defaultMethod || 'PIX');
-  if(!method) return;
   try{
+    const cashReady=await ensureCashOpen('confirmar o pagamento');
+
+    if(!cashReady){
+      notify(
+        'Pagamento não confirmado',
+        'O caixa precisa estar aberto para confirmar o pagamento.',
+        'warning'
+      );
+      return;
+    }
+
+    const method=prompt(
+      'Forma de pagamento: PIX, CASH ou CARD',
+      defaultMethod||'PIX'
+    );
+
+    if(!method) return;
+
     await api(`/api/staff/orders/${id}/payment`,{
       method:'POST',
-      body:JSON.stringify({method:method.toUpperCase()})
+      body:JSON.stringify({
+        method:method.toUpperCase()
+      })
     });
-    await Promise.all([loadOrders(),loadCash()]);
+
+    notify(
+      'Pagamento confirmado',
+      'O pagamento foi registrado com o caixa aberto.',
+      'success'
+    );
+
+    await Promise.all([
+      loadOrders(),
+      loadCash()
+    ]);
   }catch(e){
     alert(e.message);
   }

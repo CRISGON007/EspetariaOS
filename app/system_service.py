@@ -141,3 +141,21 @@ def prune_old_backups(backups_dir: str, keep: int = 30) -> list[str]:
         file.unlink(missing_ok=True)
         removed.append(file.name)
     return removed
+
+
+def database_integrity(database_path: str) -> dict[str, Any]:
+    path = Path(database_path)
+    if not path.exists():
+        return {"ok": False, "result": "MISSING", "message": "Banco de dados não encontrado."}
+    try:
+        with sqlite3.connect(path) as conn:
+            row = conn.execute("PRAGMA integrity_check").fetchone()
+            result = str(row[0]) if row else "unknown"
+        return {
+            "ok": result.lower() == "ok",
+            "result": result,
+            "message": "Integridade do banco confirmada." if result.lower() == "ok"
+                       else "O banco apresentou problemas de integridade.",
+        }
+    except sqlite3.Error as exc:
+        return {"ok": False, "result": "ERROR", "message": str(exc)}

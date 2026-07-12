@@ -1,4 +1,4 @@
-# EspetariaOS Python v0.7.2
+# EspetariaOS Python v1.0.1
 
 Versão com atualização em tempo real e central de notificações, sem PWA e sem instalação nos aparelhos dos clientes.
 
@@ -375,3 +375,86 @@ Execute:
 
 O servidor somente será iniciado quando todos os testes anteriores forem
 concluídos com sucesso.
+
+## Financeiro — v0.8.0
+O painel administrativo possui cadastro de despesas e resumo de receita,
+despesas e saldo.
+
+Publicação no GitHub:
+```bash
+./publicar_git.sh v0.8.0
+```
+
+
+## Correção da v0.8.1
+
+A exclusão de despesas agora retorna HTTP 200 com:
+
+```json
+{"ok": true}
+```
+
+Isso corrige o erro de inicialização:
+
+```text
+AssertionError: Status code 204 must not have a response body
+```
+
+
+## Relatórios gerenciais — v0.9.0
+
+A área **Relatórios** consolida indicadores de vendas, operação e financeiro
+por período. O relatório pode ser exportado para CSV.
+
+Publicação no GitHub:
+
+```bash
+./publicar_git.sh v0.9.0
+```
+
+
+## Correções operacionais — v0.9.1
+
+O relógio do pedido é interrompido quando o status chega a **Entregue** ou
+**Cancelado**. A auditoria também passa a listar automaticamente todas as ações
+disponíveis no sistema.
+
+Publicação:
+
+```bash
+./publicar_git.sh v0.9.1
+```
+
+
+## Pagamento e caixa — v0.9.2
+
+Ao clicar em **Confirmar pagamento** com o caixa fechado, o sistema pergunta se
+o atendente deseja abrir o caixa. O pagamento somente pode ser confirmado
+depois que a abertura for concluída.
+
+Publicação:
+
+```bash
+./publicar_git.sh v0.9.2
+```
+
+## Versão estável v1.0.0
+```bash
+./diagnostico.sh
+sudo ./instalar_servico.sh
+./atualizar_producao.sh
+./publicar_git.sh v1.0.0
+```
+Consulte `GUIA_PRODUCAO_v1.0.0.md`.
+
+
+## Ajustes de navegação — v1.0.1
+
+No Painel Administrativo, a navegação superior passa a mostrar:
+
+```text
+Painel de pedidos | Sistema | Sobre | Sair
+```
+
+No Painel de Pedidos, o botão **Administração** é disponibilizado exclusivamente
+para usuários com perfil Administrador.

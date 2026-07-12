@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>EspetariaOS — Administração</title>
-  <link rel="stylesheet" href="/assets/css/app.css?v=0.7.2">
+  <link rel="stylesheet" href="/assets/css/app.css?v=1.0.1">
 </head>
 <body class="admin-body">
 <header class="topbar admin-topbar">
@@ -14,6 +14,8 @@
   </div>
   <nav>
     <a href="/atendimento" class="ghost link-button">Painel de pedidos</a>
+    <a href="/sistema" class="ghost link-button">Sistema</a>
+    <a href="/sobre" class="ghost link-button">Sobre</a>
     <button id="logout" class="ghost">Sair</button>
   </nav>
 </header>
@@ -21,7 +23,7 @@
 <main class="admin-layout">
   <aside class="admin-sidebar">
     <button class="nav-item active" data-section="dashboard">Painel</button>
-    <button class="nav-item" data-section="products">Produtos</button><button class="nav-item" data-section="stock">Estoque</button><button class="nav-item" data-section="sales">Vendas</button>
+    <button class="nav-item" data-section="products">Produtos</button><button class="nav-item" data-section="stock">Estoque</button><button class="nav-item" data-section="sales">Vendas</button><button class="nav-item" data-section="finance">Financeiro</button><button class="nav-item" data-section="reports">Relatórios</button>
     <button class="nav-item" data-section="customers">Clientes</button><button class="nav-item" data-section="audit">Auditoria</button>
     <button class="nav-item" data-section="settings">Configurações</button>
   </aside>
@@ -112,6 +114,108 @@
 
     <div id="salesSection" class="admin-section hidden"><div class="page-heading"><div><span class="eyebrow">Consultas</span><h1>Vendas</h1></div><button id="exportSales" class="primary">Exportar CSV</button></div><section class="panel"><div class="sales-filters"><input id="saleCode" placeholder="Código"><input id="saleCustomer" placeholder="Cliente"><input id="salePhone" placeholder="Telefone"><select id="saleStatus"><option value="">Todos os status</option><option value="RECEIVED">Recebido</option><option value="PREPARING">Em preparo</option><option value="READY">Pronto</option><option value="DELIVERED">Entregue</option><option value="CANCELLED">Cancelado</option></select><select id="salePaymentMethod"><option value="">Todas as formas</option><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option></select><select id="salePaymentStatus"><option value="">Todos os pagamentos</option><option value="PENDING">Pendente</option><option value="PAID">Pago</option></select><input id="saleStartDate" type="date"><input id="saleEndDate" type="date"><button id="searchSales" class="primary">Pesquisar</button></div></section><section class="panel"><div class="panel-header"><h2>Resultados</h2><span id="salesCount">0 vendas</span></div><div id="salesResults" class="dashboard-order-list"></div></section></div><div id="stockSection" class="admin-section hidden"><div class="page-heading"><div><span class="eyebrow">Controle operacional</span><h1>Estoque</h1></div><button id="refreshStock" class="primary">Atualizar</button></div><section class="dashboard-grid stock-summary-grid"><article class="dashboard-card"><span>Produtos controlados</span><strong id="stockControlledCount">0</strong></article><article class="dashboard-card"><span>Unidades</span><strong id="stockUnitsCount">0</strong></article><article class="dashboard-card"><span>Estoque baixo</span><strong id="stockLowCount">0</strong></article><article class="dashboard-card"><span>Sem estoque</span><strong id="stockOutCount">0</strong></article><article class="dashboard-card"><span>Valor estimado</span><strong id="stockValue">R$ 0,00</strong></article></section><section class="panel"><div class="panel-header"><h2>Produtos controlados</h2></div><div class="table-wrap"><table><thead><tr><th>Produto</th><th>Saldo</th><th>Mínimo</th><th>Situação</th><th>Ação</th></tr></thead><tbody id="stockProductRows"></tbody></table></div></section><section class="panel"><div class="panel-header"><h2>Movimentações recentes</h2></div><div id="stockMovementRows" class="stock-movement-list"></div></section></div>
 
+    <div id="financeSection" class="admin-section hidden">
+      <div class="page-heading">
+        <div><span class="eyebrow">Gestão financeira</span><h1>Financeiro</h1></div>
+        <button id="newExpense" class="primary">Nova despesa</button>
+      </div>
+      <section class="dashboard-grid finance-summary-grid">
+        <article class="dashboard-card"><span>Receita confirmada</span><strong id="financeRevenue">R$ 0,00</strong></article>
+        <article class="dashboard-card"><span>Despesas</span><strong id="financeExpenses">R$ 0,00</strong></article>
+        <article class="dashboard-card"><span>Saldo do período</span><strong id="financeBalance">R$ 0,00</strong></article>
+        <article class="dashboard-card"><span>Pedidos pagos</span><strong id="financePaidOrders">0</strong></article>
+      </section>
+      <section class="panel"><div class="finance-filters">
+        <input id="financeStartDate" type="date"><input id="financeEndDate" type="date">
+        <input id="expenseQuery" placeholder="Descrição ou observação">
+        <select id="expenseCategory"><option value="">Todas as categorias</option><option>Insumos</option><option>Bebidas</option><option>Gás</option><option>Energia</option><option>Aluguel</option><option>Manutenção</option><option>Outros</option></select>
+        <select id="expensePaymentMethod"><option value="">Todas as formas</option><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option><option value="TRANSFER">Transferência</option></select>
+        <button id="searchFinance" class="primary">Atualizar</button>
+      </div></section>
+      <section class="panel"><div class="panel-header"><h2>Despesas registradas</h2><span id="expenseCount">0 despesas</span></div><div id="expenseResults" class="expense-list"></div></section>
+      <section class="panel"><div class="panel-header"><h2>Despesas por categoria</h2></div><div id="expenseCategorySummary" class="category-summary-grid"></div></section>
+    </div>
+
+    <div id="reportsSection" class="admin-section hidden">
+      <div class="page-heading">
+        <div>
+          <span class="eyebrow">Indicadores gerenciais</span>
+          <h1>Relatórios</h1>
+        </div>
+        <button id="exportReport" class="primary">Exportar CSV</button>
+      </div>
+
+      <section class="panel">
+        <div class="report-filters">
+          <label>Data inicial
+            <input id="reportStartDate" type="date">
+          </label>
+          <label>Data final
+            <input id="reportEndDate" type="date">
+          </label>
+          <button id="refreshReports" class="primary">Gerar relatório</button>
+        </div>
+      </section>
+
+      <section class="dashboard-grid report-summary-grid">
+        <article class="dashboard-card">
+          <span>Pedidos</span>
+          <strong id="reportOrders">0</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Receita</span>
+          <strong id="reportRevenue">R$ 0,00</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Despesas</span>
+          <strong id="reportExpenses">R$ 0,00</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Resultado líquido</span>
+          <strong id="reportNet">R$ 0,00</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Ticket médio</span>
+          <strong id="reportAverageTicket">R$ 0,00</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Taxa de cancelamento</span>
+          <strong id="reportCancellationRate">0%</strong>
+        </article>
+        <article class="dashboard-card">
+          <span>Tempo médio de preparo</span>
+          <strong id="reportPreparationTime">0s</strong>
+        </article>
+      </section>
+
+      <section class="report-grid">
+        <article class="panel">
+          <div class="panel-header"><h2>Receita por dia</h2></div>
+          <div id="dailyRevenueChart" class="bar-chart"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Produtos mais vendidos</h2></div>
+          <div id="topProductsReport" class="ranking-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Formas de pagamento</h2></div>
+          <div id="paymentMethodsReport" class="ranking-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header"><h2>Status dos pedidos</h2></div>
+          <div id="statusReport" class="ranking-list"></div>
+        </article>
+
+        <article class="panel report-wide">
+          <div class="panel-header"><h2>Melhores clientes</h2></div>
+          <div id="topCustomersReport" class="customer-ranking"></div>
+        </article>
+      </section>
+    </div>
+
     <div id="customersSection" class="admin-section hidden">
       <div class="page-heading"><div><span class="eyebrow">Cadastros</span><h1>Clientes</h1></div></div>
       <section class="panel"><div class="toolbar"><input id="customerSearch" type="search" placeholder="Buscar por nome ou telefone..."><button id="searchCustomers" class="primary">Pesquisar</button></div></section>
@@ -121,7 +225,9 @@
     <div id="auditSection" class="admin-section hidden">
       <div class="page-heading"><div><span class="eyebrow">Segurança e controle</span><h1>Auditoria</h1></div></div>
       <section class="panel"><div class="audit-filters">
-        <select id="auditAction"><option value="">Todas as ações</option><option value="LOGIN_SUCCESS">Login realizado</option><option value="LOGIN_FAILED">Tentativa inválida</option><option value="ORDER_CREATED">Pedido criado</option><option value="ORDER_STATUS_CHANGED">Status alterado</option><option value="PAYMENT_CONFIRMED">Pagamento confirmado</option><option value="PRODUCT_CREATED">Produto cadastrado</option><option value="PRODUCT_UPDATED">Produto atualizado</option><option value="CASH_OPENED">Caixa aberto</option><option value="CASH_CLOSED">Caixa fechado</option><option value="CASH_SUPPLY">Suprimento</option><option value="CASH_WITHDRAWAL">Sangria</option><option value="BACKUP_CREATED">Backup manual</option><option value="AUTOMATIC_BACKUP_CREATED">Backup automático</option></select>
+        <select id="auditAction">
+          <option value="">Todas as ações</option>
+        </select>
         <input id="auditUser" placeholder="Usuário"><input id="auditStartDate" type="date"><input id="auditEndDate" type="date"><button id="searchAudit" class="primary">Pesquisar</button>
       </div></section>
       <section class="panel"><div class="panel-header"><h2>Eventos registrados</h2><span id="auditCount">0 eventos</span></div><div id="auditResults" class="audit-list"></div></section>
@@ -141,6 +247,20 @@
     </div>
   </section>
 </main>
+<dialog id="expenseDialog">
+  <form method="dialog" class="dialog-card">
+    <div class="dialog-header"><h2>Nova despesa</h2><button value="cancel" class="icon-button">✕</button></div>
+    <label>Descrição <span class="required-mark">*</span><input id="expenseDescription"></label>
+    <label>Categoria <span class="required-mark">*</span><select id="expenseDialogCategory"><option value="">Selecione</option><option>Insumos</option><option>Bebidas</option><option>Gás</option><option>Energia</option><option>Aluguel</option><option>Manutenção</option><option>Outros</option></select></label>
+    <label>Forma de pagamento <span class="required-mark">*</span><select id="expenseDialogPayment"><option value="">Selecione</option><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="CARD">Cartão</option><option value="TRANSFER">Transferência</option></select></label>
+    <label>Valor (R$) <span class="required-mark">*</span><input id="expenseValue" inputmode="decimal" placeholder="0,00"></label>
+    <label>Data <span class="required-mark">*</span><input id="expenseDate" type="date"></label>
+    <label>Observação<textarea id="expenseNotes" rows="3"></textarea></label>
+    <p id="expenseMessage" class="message"></p>
+    <div class="dialog-actions"><button value="cancel" class="ghost">Cancelar</button><button id="saveExpense" type="button" class="primary">Salvar</button></div>
+  </form>
+</dialog>
+
 <dialog id="stockDialog"><form method="dialog" class="dialog-card"><div class="dialog-header"><h2>Movimentar estoque</h2><button value="cancel" class="icon-button">✕</button></div><input id="stockProductId" type="hidden"><p id="stockProductName" class="message"></p><label>Tipo<select id="stockMovementType"><option value="ENTRY">Entrada</option><option value="LOSS">Perda</option><option value="ADJUSTMENT">Ajuste</option></select></label><label>Quantidade<input id="stockMovementQuantity" type="number"></label><label>Motivo<textarea id="stockMovementReason" rows="3"></textarea></label><p id="stockMovementMessage" class="message"></p><div class="dialog-actions"><button value="cancel" class="ghost">Cancelar</button><button id="saveStockMovement" type="button" class="primary">Registrar</button></div></form></dialog>
 
 <dialog id="productDialog">
@@ -177,5 +297,5 @@
 
 
 
-<script src="/assets/js/common.js?v=0.7.2"></script><script src="/assets/js/ptbr.js?v=0.7.2"></script><script src="/assets/js/realtime.js?v=0.7.2"></script><script src="/assets/js/admin.js?v=0.7.2"></script></body>
+<script src="/assets/js/common.js?v=1.0.1"></script><script src="/assets/js/ptbr.js?v=1.0.1"></script><script src="/assets/js/realtime.js?v=1.0.1"></script><script src="/assets/js/admin.js?v=1.0.1"></script></body>
 </html>

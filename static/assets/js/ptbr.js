@@ -40,8 +40,12 @@ const PT_BR = Object.freeze({
     AUTOMATIC_BACKUP_FAILED: 'Falha no backup automático',
     OLD_BACKUPS_REMOVED: 'Backups antigos removidos',
     STOCK_MOVEMENT: 'Movimentação de estoque',
+    EXPENSE_CREATED: 'Despesa registrada',
+    EXPENSE_DELETED: 'Despesa excluída',
     UNPAID_ORDER_DELIVERED: 'Pedido entregue sem pagamento confirmado',
-    CASH_REQUIRED_FOR_DELIVERY: 'Entrega bloqueada por caixa fechado'
+    CASH_REQUIRED_FOR_DELIVERY: 'Entrega bloqueada por caixa fechado',
+    CASH_SUPPLY: 'Suprimento de caixa',
+    CASH_WITHDRAWAL: 'Sangria de caixa'
   }
 });
 

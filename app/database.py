@@ -167,6 +167,25 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_stock_movements_product
                     ON stock_movements(product_id, created_at);
 
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    description TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    payment_method TEXT NOT NULL,
+                    value_cents INTEGER NOT NULL CHECK(value_cents > 0),
+                    expense_date TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_by INTEGER,
+                    created_by_name TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(created_by) REFERENCES users(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_expenses_date
+                    ON expenses(expense_date);
+                CREATE INDEX IF NOT EXISTS idx_expenses_category
+                    ON expenses(category);
+
                 CREATE TABLE IF NOT EXISTS cash_registers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     opened_by INTEGER NOT NULL,
@@ -611,21 +630,40 @@ class Database:
                 (order_id,),
             ).fetchall()
 
+        terminal_statuses = {"DELIVERED", "CANCELLED"}
         timeline: list[dict[str, Any]] = []
+
         for index, row in enumerate(rows):
             entered_at = datetime.fromisoformat(row["entered_at"])
-            left_at = (
-                datetime.fromisoformat(rows[index + 1]["entered_at"])
-                if index + 1 < len(rows)
-                else datetime.now(timezone.utc)
+            is_last = index == len(rows) - 1
+            is_terminal = row["status"] in terminal_statuses
+
+            if not is_last:
+                left_at = datetime.fromisoformat(
+                    rows[index + 1]["entered_at"]
+                )
+                left_at_text = rows[index + 1]["entered_at"]
+            elif is_terminal:
+                # Um pedido finalizado não deve continuar somando tempo.
+                left_at = entered_at
+                left_at_text = row["entered_at"]
+            else:
+                left_at = datetime.now(timezone.utc)
+                left_at_text = None
+
+            timeline.append(
+                {
+                    "status": row["status"],
+                    "enteredAt": row["entered_at"],
+                    "leftAt": left_at_text,
+                    "durationSeconds": max(
+                        0,
+                        int((left_at - entered_at).total_seconds()),
+                    ),
+                    "current": is_last and not is_terminal,
+                }
             )
-            timeline.append({
-                "status": row["status"],
-                "enteredAt": row["entered_at"],
-                "leftAt": rows[index + 1]["entered_at"] if index + 1 < len(rows) else None,
-                "durationSeconds": max(0, int((left_at - entered_at).total_seconds())),
-                "current": index == len(rows) - 1,
-            })
+
         return timeline
 
     def get_order(self, order_id: int) -> dict[str, Any] | None:
@@ -919,6 +957,432 @@ class Database:
             cancelled=conn.execute("SELECT COUNT(*) FROM orders WHERE date(created_at)=date('now','localtime') AND status='CANCELLED'").fetchone()[0]
         revenue=int(row['revenue'] or 0)
         return {"ordersToday":int(row['orders'] or 0),"revenueTodayCents":revenue,"averageTicketCents":int(revenue/paid) if paid else 0,"cancelledToday":int(cancelled)}
+
+    def create_expense(
+        self,
+        description: str,
+        category: str,
+        payment_method: str,
+        value_cents: int,
+        expense_date: str,
+        notes: str = "",
+        user_id: int | None = None,
+        user_name: str = "",
+    ) -> int:
+        description = description.strip()
+        category = category.strip()
+        payment_method = payment_method.strip().upper()
+        if len(description) < 2:
+            raise ValueError("Informe a descrição da despesa.")
+        if not category:
+            raise ValueError("Informe a categoria da despesa.")
+        if payment_method not in {"PIX", "CASH", "CARD", "TRANSFER"}:
+            raise ValueError("Forma de pagamento inválida.")
+        if value_cents <= 0:
+            raise ValueError("Informe um valor maior que zero.")
+        if not expense_date.strip():
+            raise ValueError("Informe a data da despesa.")
+
+        with self.connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO expenses
+                (description, category, payment_method, value_cents,
+                 expense_date, notes, created_by, created_by_name, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    description, category, payment_method, value_cents,
+                    expense_date.strip(), notes.strip(), user_id,
+                    user_name, utc_now(),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_expenses(
+        self,
+        category: str = "",
+        payment_method: str = "",
+        start_date: str = "",
+        end_date: str = "",
+        query: str = "",
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        values: list[Any] = []
+        if category.strip():
+            conditions.append("category = ?")
+            values.append(category.strip())
+        if payment_method.strip():
+            conditions.append("payment_method = ?")
+            values.append(payment_method.strip().upper())
+        if start_date.strip():
+            conditions.append("date(expense_date) >= date(?)")
+            values.append(start_date.strip())
+        if end_date.strip():
+            conditions.append("date(expense_date) <= date(?)")
+            values.append(end_date.strip())
+        if query.strip():
+            conditions.append(
+                "(LOWER(description) LIKE LOWER(?) OR LOWER(notes) LIKE LOWER(?))"
+            )
+            values.extend([f"%{query.strip()}%", f"%{query.strip()}%"])
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        values.append(max(1, min(limit, 1000)))
+        with self.connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, description, category, payment_method, value_cents,
+                       expense_date, notes, created_by_name, created_at
+                FROM expenses
+                {where}
+                ORDER BY expense_date DESC, id DESC
+                LIMIT ?
+                """,
+                values,
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "description": row["description"],
+                "category": row["category"],
+                "paymentMethod": row["payment_method"],
+                "valueCents": int(row["value_cents"]),
+                "expenseDate": row["expense_date"],
+                "notes": row["notes"],
+                "createdBy": row["created_by_name"],
+                "createdAt": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def delete_expense(self, expense_id: int) -> None:
+        with self.connection() as conn:
+            if conn.execute(
+                "SELECT id FROM expenses WHERE id = ?",
+                (expense_id,),
+            ).fetchone() is None:
+                raise ValueError("Despesa não encontrada.")
+            conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+
+    def financial_summary(
+        self,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> dict[str, Any]:
+        sales_conditions = ["payment_status = 'PAID'"]
+        expense_conditions: list[str] = []
+        sales_values: list[Any] = []
+        expense_values: list[Any] = []
+
+        if start_date.strip():
+            sales_conditions.append("date(created_at) >= date(?)")
+            expense_conditions.append("date(expense_date) >= date(?)")
+            sales_values.append(start_date.strip())
+            expense_values.append(start_date.strip())
+        if end_date.strip():
+            sales_conditions.append("date(created_at) <= date(?)")
+            expense_conditions.append("date(expense_date) <= date(?)")
+            sales_values.append(end_date.strip())
+            expense_values.append(end_date.strip())
+
+        expense_where = (
+            f"WHERE {' AND '.join(expense_conditions)}"
+            if expense_conditions else ""
+        )
+
+        with self.connection() as conn:
+            sales = conn.execute(
+                f"""
+                SELECT COUNT(*) AS paid_orders,
+                       COALESCE(SUM(total_cents), 0) AS revenue
+                FROM orders
+                WHERE {' AND '.join(sales_conditions)}
+                """,
+                sales_values,
+            ).fetchone()
+            expenses = conn.execute(
+                f"""
+                SELECT COUNT(*) AS expense_count,
+                       COALESCE(SUM(value_cents), 0) AS expenses
+                FROM expenses
+                {expense_where}
+                """,
+                expense_values,
+            ).fetchone()
+            categories = conn.execute(
+                f"""
+                SELECT category, COALESCE(SUM(value_cents), 0) AS total
+                FROM expenses
+                {expense_where}
+                GROUP BY category
+                ORDER BY total DESC
+                """,
+                expense_values,
+            ).fetchall()
+
+        revenue = int(sales["revenue"] or 0)
+        expense_total = int(expenses["expenses"] or 0)
+        return {
+            "revenueCents": revenue,
+            "expenseCents": expense_total,
+            "balanceCents": revenue - expense_total,
+            "paidOrders": int(sales["paid_orders"] or 0),
+            "expenseCount": int(expenses["expense_count"] or 0),
+            "expensesByCategory": [
+                {"category": row["category"], "totalCents": int(row["total"])}
+                for row in categories
+            ],
+        }
+
+    def business_report(
+        self,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> dict[str, Any]:
+        order_conditions: list[str] = []
+        expense_conditions: list[str] = []
+        order_values: list[Any] = []
+        expense_values: list[Any] = []
+
+        if start_date.strip():
+            order_conditions.append("date(o.created_at) >= date(?)")
+            expense_conditions.append("date(expense_date) >= date(?)")
+            order_values.append(start_date.strip())
+            expense_values.append(start_date.strip())
+
+        if end_date.strip():
+            order_conditions.append("date(o.created_at) <= date(?)")
+            expense_conditions.append("date(expense_date) <= date(?)")
+            order_values.append(end_date.strip())
+            expense_values.append(end_date.strip())
+
+        order_where = (
+            f"WHERE {' AND '.join(order_conditions)}"
+            if order_conditions
+            else ""
+        )
+        expense_where = (
+            f"WHERE {' AND '.join(expense_conditions)}"
+            if expense_conditions
+            else ""
+        )
+
+        with self.connection() as conn:
+            totals = conn.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS total_orders,
+                    COALESCE(SUM(
+                        CASE WHEN o.payment_status='PAID'
+                             THEN o.total_cents ELSE 0 END
+                    ), 0) AS revenue_cents,
+                    COALESCE(SUM(
+                        CASE WHEN o.status='CANCELLED'
+                             THEN 1 ELSE 0 END
+                    ), 0) AS cancelled_orders,
+                    COALESCE(SUM(
+                        CASE WHEN o.status='DELIVERED'
+                             THEN 1 ELSE 0 END
+                    ), 0) AS delivered_orders
+                FROM orders o
+                {order_where}
+                """,
+                order_values,
+            ).fetchone()
+
+            expenses = conn.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS expense_count,
+                    COALESCE(SUM(value_cents), 0) AS expense_cents
+                FROM expenses
+                {expense_where}
+                """,
+                expense_values,
+            ).fetchone()
+
+            daily = conn.execute(
+                f"""
+                SELECT
+                    date(o.created_at) AS day,
+                    COUNT(*) AS orders,
+                    COALESCE(SUM(
+                        CASE WHEN o.payment_status='PAID'
+                             THEN o.total_cents ELSE 0 END
+                    ), 0) AS revenue_cents
+                FROM orders o
+                {order_where}
+                GROUP BY date(o.created_at)
+                ORDER BY day
+                """,
+                order_values,
+            ).fetchall()
+
+            top_products = conn.execute(
+                f"""
+                SELECT
+                    oi.product_name,
+                    SUM(oi.quantity) AS quantity,
+                    SUM(oi.subtotal_cents) AS total_cents
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                {order_where}
+                {'AND' if order_where else 'WHERE'} o.status != 'CANCELLED'
+                GROUP BY oi.product_name
+                ORDER BY quantity DESC, total_cents DESC
+                LIMIT 10
+                """,
+                order_values,
+            ).fetchall()
+
+            payment_methods = conn.execute(
+                f"""
+                SELECT
+                    o.payment_method,
+                    COUNT(*) AS orders,
+                    COALESCE(SUM(
+                        CASE WHEN o.payment_status='PAID'
+                             THEN o.total_cents ELSE 0 END
+                    ), 0) AS total_cents
+                FROM orders o
+                {order_where}
+                GROUP BY o.payment_method
+                ORDER BY total_cents DESC
+                """,
+                order_values,
+            ).fetchall()
+
+            status_totals = conn.execute(
+                f"""
+                SELECT o.status, COUNT(*) AS total
+                FROM orders o
+                {order_where}
+                GROUP BY o.status
+                ORDER BY total DESC
+                """,
+                order_values,
+            ).fetchall()
+
+            customers = conn.execute(
+                f"""
+                SELECT
+                    c.name,
+                    c.phone,
+                    COUNT(o.id) AS orders,
+                    COALESCE(SUM(
+                        CASE WHEN o.payment_status='PAID'
+                             THEN o.total_cents ELSE 0 END
+                    ), 0) AS total_cents
+                FROM orders o
+                JOIN customers c ON c.id = o.customer_id
+                {order_where}
+                GROUP BY c.id, c.name, c.phone
+                ORDER BY total_cents DESC, orders DESC
+                LIMIT 10
+                """,
+                order_values,
+            ).fetchall()
+
+            preparation_times = conn.execute(
+                f"""
+                SELECT
+                    h.order_id,
+                    CAST(
+                        (julianday(next_h.entered_at) - julianday(h.entered_at))
+                        * 86400 AS INTEGER
+                    ) AS duration_seconds
+                FROM order_status_history h
+                JOIN orders o ON o.id = h.order_id
+                JOIN order_status_history next_h
+                  ON next_h.id = (
+                    SELECT MIN(h2.id)
+                    FROM order_status_history h2
+                    WHERE h2.order_id = h.order_id
+                      AND h2.id > h.id
+                  )
+                {order_where}
+                {'AND' if order_where else 'WHERE'} h.status='PREPARING'
+                """,
+                order_values,
+            ).fetchall()
+
+        total_orders = int(totals["total_orders"] or 0)
+        revenue_cents = int(totals["revenue_cents"] or 0)
+        expense_cents = int(expenses["expense_cents"] or 0)
+        cancelled_orders = int(totals["cancelled_orders"] or 0)
+        preparation_values = [
+            max(0, int(row["duration_seconds"] or 0))
+            for row in preparation_times
+        ]
+
+        return {
+            "summary": {
+                "totalOrders": total_orders,
+                "revenueCents": revenue_cents,
+                "expenseCents": expense_cents,
+                "netCents": revenue_cents - expense_cents,
+                "averageTicketCents": (
+                    int(revenue_cents / total_orders)
+                    if total_orders
+                    else 0
+                ),
+                "cancelledOrders": cancelled_orders,
+                "cancellationRate": (
+                    round((cancelled_orders / total_orders) * 100, 2)
+                    if total_orders
+                    else 0
+                ),
+                "deliveredOrders": int(totals["delivered_orders"] or 0),
+                "averagePreparationSeconds": (
+                    int(sum(preparation_values) / len(preparation_values))
+                    if preparation_values
+                    else 0
+                ),
+                "expenseCount": int(expenses["expense_count"] or 0),
+            },
+            "daily": [
+                {
+                    "date": row["day"],
+                    "orders": int(row["orders"] or 0),
+                    "revenueCents": int(row["revenue_cents"] or 0),
+                }
+                for row in daily
+            ],
+            "topProducts": [
+                {
+                    "name": row["product_name"],
+                    "quantity": int(row["quantity"] or 0),
+                    "totalCents": int(row["total_cents"] or 0),
+                }
+                for row in top_products
+            ],
+            "paymentMethods": [
+                {
+                    "method": row["payment_method"],
+                    "orders": int(row["orders"] or 0),
+                    "totalCents": int(row["total_cents"] or 0),
+                }
+                for row in payment_methods
+            ],
+            "statusTotals": [
+                {
+                    "status": row["status"],
+                    "total": int(row["total"] or 0),
+                }
+                for row in status_totals
+            ],
+            "topCustomers": [
+                {
+                    "name": row["name"],
+                    "phone": row["phone"],
+                    "orders": int(row["orders"] or 0),
+                    "totalCents": int(row["total_cents"] or 0),
+                }
+                for row in customers
+            ],
+        }
 
     def cash_history(self, limit: int = 100) -> list[dict[str, Any]]:
         with self.connection() as conn:
